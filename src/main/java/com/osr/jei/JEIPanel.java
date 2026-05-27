@@ -16,17 +16,13 @@ import com.osr.jei.service.UsedInService;
 import com.osr.jei.service.WikiService;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.ItemComposition;
-import net.runelite.api.coords.WorldPoint;
 import net.runelite.client.callback.ClientThread;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.game.ItemManager;
-import net.runelite.client.plugins.PluginManager;
 import net.runelite.client.ui.ColorScheme;
 import net.runelite.client.ui.PluginPanel;
 import net.runelite.client.ui.components.IconTextField;
 import net.runelite.client.util.AsyncBufferedImage;
-
-import java.lang.reflect.Method;
 
 import javax.inject.Inject;
 import javax.inject.Singleton;
@@ -86,7 +82,6 @@ public class JEIPanel extends PluginPanel {
     @Inject private MonsterService   monsterService;
     @Inject private EquipmentService equipmentService;
     @Inject private ShopService      shopService;
-    @Inject private PluginManager    pluginManager;
     @Inject private JEIConfig        config;
 
     /** Nature rune item ID — used to compute high-alch profit. */
@@ -1571,51 +1566,18 @@ public class JEIPanel extends PluginPanel {
             usedInListPanel.add(noData);
         }
 
-        // ── Path-to-monster button (requires Shortest Path plugin) ────────────
+        // ── Map tile coordinates (if available from wiki) ─────────────────────
         if (infoOpt.isPresent()) {
             MonsterInfo info = infoOpt.get();
             if (info.mapX > 0 && info.mapY > 0) {
-                WorldPoint target = new WorldPoint(
-                    info.mapX, info.mapY, Math.max(0, info.mapPlane));
-
                 usedInListPanel.add(Box.createRigidArea(new Dimension(0, 8)));
 
-                // Tile-coordinate hint in small gray text
                 JLabel coordHint = new JLabel(String.format(
-                    "Tile: %d, %d  (plane %d)", info.mapX, info.mapY, Math.max(0, info.mapPlane)));
+                    "Map tile: %d, %d  (plane %d)", info.mapX, info.mapY, Math.max(0, info.mapPlane)));
                 coordHint.setForeground(new Color(110, 110, 110));
                 coordHint.setFont(coordHint.getFont().deriveFont(10f));
                 coordHint.setAlignmentX(LEFT_ALIGNMENT);
                 usedInListPanel.add(coordHint);
-                usedInListPanel.add(Box.createRigidArea(new Dimension(0, 4)));
-
-                JButton pathBtn = new JButton("→  Path to Monster");
-                pathBtn.setForeground(new Color(100, 210, 100));
-                pathBtn.setBackground(ColorScheme.DARKER_GRAY_COLOR);
-                pathBtn.setOpaque(false);
-                pathBtn.setBorderPainted(false);
-                pathBtn.setFocusPainted(false);
-                pathBtn.setContentAreaFilled(false);
-                pathBtn.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
-                pathBtn.setAlignmentX(LEFT_ALIGNMENT);
-                pathBtn.setFont(pathBtn.getFont().deriveFont(Font.BOLD, 11f));
-                pathBtn.setToolTipText("Requires the 'Shortest Path' plugin from the Plugin Hub");
-                pathBtn.addActionListener(e ->
-                    // setTarget must be called on the client thread
-                    clientThread.invokeLater(() -> {
-                        boolean ok = tryShortestPath(target);
-                        if (!ok) {
-                            SwingUtilities.invokeLater(() ->
-                                JOptionPane.showMessageDialog(
-                                    pathBtn,
-                                    "Install the 'Shortest Path' plugin from the\n"
-                                    + "RuneLite Plugin Hub to use automatic pathfinding.",
-                                    "Shortest Path not found",
-                                    JOptionPane.INFORMATION_MESSAGE));
-                        }
-                    })
-                );
-                usedInListPanel.add(pathBtn);
             }
         }
 
@@ -1642,40 +1604,6 @@ public class JEIPanel extends PluginPanel {
 
         usedInListPanel.revalidate();
         usedInListPanel.repaint();
-    }
-
-    /**
-     * Attempts to trigger the Shortest Path plugin to route the player to
-     * {@code target}.
-     *
-     * <p>Uses reflection to call {@code ShortestPathPlugin.setTarget(WorldPoint)}
-     * so there is no hard compile-time dependency on the optional community plugin.
-     * Must be called on the <b>client thread</b>.
-     *
-     * @return {@code true} if the plugin was found and the call succeeded
-     */
-    private boolean tryShortestPath(WorldPoint target) {
-        net.runelite.client.plugins.Plugin sp = pluginManager.getPlugins().stream()
-            .filter(p -> p.getClass().getSimpleName().equals("ShortestPathPlugin"))
-            .findFirst().orElse(null);
-
-        if (sp == null) {
-            log.debug("[JEI] Shortest Path plugin not installed/enabled");
-            return false;
-        }
-
-        try {
-            Method setTarget = sp.getClass().getMethod("setTarget", WorldPoint.class);
-            setTarget.setAccessible(true);
-            setTarget.invoke(sp, target);
-            log.debug("[JEI] Shortest Path target set to {}", target);
-            return true;
-        } catch (NoSuchMethodException e) {
-            log.debug("[JEI] ShortestPathPlugin has no setTarget(WorldPoint) method");
-        } catch (Exception e) {
-            log.warn("[JEI] Failed to invoke ShortestPath.setTarget: {}", e.getMessage());
-        }
-        return false;
     }
 
     /** Builds a "← Back to drops" button that re-shows the drops expanded list. */
