@@ -1,0 +1,18 @@
+# Maven build output — never commit compiled classes or JARs
+target/
+
+# Maven binary distribution (not part of the plugin source)
+bin/
+
+# IntelliJ IDEA — developers generate their own from pom.xml
+.idea/
+*.iml
+*.iws
+*.ipr
+
+# Claude Code local session settings
+.claude/
+
+# OS noise
+.DS_Store
+Thumbs.db
