@@ -17,17 +17,11 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Fetches monster location and map-coordinate data from the OSRS Wiki.
+ * Fetches monster location data from the OSRS Wiki.
  *
- * <h3>Two API calls per unique monster (both cached forever after first lookup)</h3>
- * <ol>
- *   <li><b>Wikitext</b> ({@code prop=wikitext}) — parses {@code {{Infobox Monster}}}
- *       for combat level and {@code {{LocLine}}} blocks for location names.</li>
- *   <li><b>Section-0 HTML</b> ({@code prop=text&section=0}) — the intro section is
- *       small and contains the first {@code mw-kartographer-maplink} anchor, whose
- *       {@code data-lon} (tile X) / {@code data-lat} (tile Y) / {@code data-plane}
- *       attributes give the primary spawn tile.</li>
- * </ol>
+ * <p>One API call per unique monster (cached forever after first lookup):
+ * wikitext ({@code prop=wikitext}) parsed for combat level via
+ * {@code {{Infobox Monster}}} and location names via {@code {{LocLine}}} blocks.
  */
 @Slf4j
 @Singleton
@@ -63,7 +57,6 @@ public class MonsterService {
     private Optional<MonsterInfo> fetchAndParse(String monsterName) throws Exception {
         String encoded = URLEncoder.encode(monsterName.replace(" ", "_"), "UTF-8");
 
-        // ── 1. Wikitext → combat level + location names ────────────────────────
         JsonObject wikitextRoot = fetchJson(WIKI_API
             + "?action=parse&prop=wikitext&format=json&redirects=true&page=" + encoded);
         if (!wikitextRoot.has("parse")) return Optional.empty();
@@ -74,33 +67,11 @@ public class MonsterService {
         int          combat    = parseCombatLevel(wikitext);
         List<String> locations = parseLocLines(wikitext);
 
-        // ── 2. Section-0 HTML → Kartographer tile coordinates ─────────────────
-        // section=0 is just the infobox intro — a small response that contains
-        // the first mw-kartographer-maplink with data-lat (Y) / data-lon (X).
-        int[] coords = null;
-        try {
-            JsonObject htmlRoot = fetchJson(WIKI_API
-                + "?action=parse&prop=text&format=json&section=0&redirects=true&page=" + encoded);
-            if (htmlRoot.has("parse")) {
-                String html = htmlRoot.getAsJsonObject("parse")
-                    .getAsJsonObject("text").get("*").getAsString();
-                coords = parseMapCoords(html);
-                if (coords != null) {
-                    log.debug("[JEI] Map coords for '{}': x={} y={} plane={}",
-                        monsterName, coords[0], coords[1], coords[2]);
-                }
-            }
-        } catch (Exception e) {
-            log.debug("[JEI] Map coord fetch failed for '{}': {}", monsterName, e.getMessage());
-        }
+        log.debug("[JEI] Monster '{}': combat={} locations={}", monsterName, combat, locations);
 
         if (locations.isEmpty() && combat == 0) return Optional.empty();
 
-        return Optional.of(new MonsterInfo(
-            monsterName, combat, locations,
-            coords != null ? coords[0] : -1,
-            coords != null ? coords[1] : -1,
-            coords != null ? coords[2] : -1));
+        return Optional.of(new MonsterInfo(monsterName, combat, locations));
     }
 
     @SuppressWarnings("deprecation")
@@ -118,55 +89,7 @@ public class MonsterService {
         }
     }
 
-    // ── Kartographer coordinate parser ─────────────────────────────────────────
-
-    private static final Pattern KART_LAT   = Pattern.compile("data-lat=\"(-?\\d+)\"");
-    private static final Pattern KART_LON   = Pattern.compile("data-lon=\"(-?\\d+)\"");
-    private static final Pattern KART_PLANE = Pattern.compile("data-plane=\"(\\d+)\"");
-
-    /**
-     * Finds the first {@code mw-kartographer-maplink} anchor in {@code html} and
-     * extracts OSRS tile coordinates from its attributes.
-     *
-     * <p>Wiki mapping: {@code data-lon} → tile X, {@code data-lat} → tile Y,
-     * {@code data-plane} → game plane (defaults to 0 if absent).
-     *
-     * @return {@code int[]{x, y, plane}} or {@code null} if no link is found
-     */
-    private int[] parseMapCoords(String html) {
-        int markerIdx = html.indexOf("mw-kartographer-maplink");
-        if (markerIdx < 0) return null;
-
-        // Walk back to find the opening <a that owns this class
-        int aStart = html.lastIndexOf("<a", markerIdx);
-        if (aStart < 0) return null;
-        int aEnd = html.indexOf(">", aStart);
-        if (aEnd < 0) return null;
-
-        String tag = html.substring(aStart, aEnd);
-
-        Matcher latM   = KART_LAT.matcher(tag);
-        Matcher lonM   = KART_LON.matcher(tag);
-        Matcher planeM = KART_PLANE.matcher(tag);
-
-        if (!latM.find() || !lonM.find()) return null;
-
-        int y     = Integer.parseInt(latM.group(1));
-        int x     = Integer.parseInt(lonM.group(1));
-        int plane = planeM.find() ? Integer.parseInt(planeM.group(1)) : 0;
-
-        return new int[]{x, y, plane};
-    }
-
     // ── Wikitext parsing ───────────────────────────────────────────────────────
-
-    private Optional<MonsterInfo> parseWikitext(String monsterName, String wikitext) {
-        int combat = parseCombatLevel(wikitext);
-        List<String> locations = parseLocLines(wikitext);
-        log.debug("[JEI] Monster '{}': combat={} locations={}", monsterName, combat, locations);
-        if (locations.isEmpty() && combat == 0) return Optional.empty();
-        return Optional.of(new MonsterInfo(monsterName, combat, locations, -1, -1, -1));
-    }
 
     private int parseCombatLevel(String wikitext) {
         String lower = wikitext.toLowerCase(Locale.ROOT);

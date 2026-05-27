@@ -1566,21 +1566,6 @@ public class JEIPanel extends PluginPanel {
             usedInListPanel.add(noData);
         }
 
-        // ── Map tile coordinates (if available from wiki) ─────────────────────
-        if (infoOpt.isPresent()) {
-            MonsterInfo info = infoOpt.get();
-            if (info.mapX > 0 && info.mapY > 0) {
-                usedInListPanel.add(Box.createRigidArea(new Dimension(0, 8)));
-
-                JLabel coordHint = new JLabel(String.format(
-                    "Map tile: %d, %d  (plane %d)", info.mapX, info.mapY, Math.max(0, info.mapPlane)));
-                coordHint.setForeground(new Color(110, 110, 110));
-                coordHint.setFont(coordHint.getFont().deriveFont(10f));
-                coordHint.setAlignmentX(LEFT_ALIGNMENT);
-                usedInListPanel.add(coordHint);
-            }
-        }
-
         // ── Open Wiki button ───────────────────────────────────────────────────
         usedInListPanel.add(Box.createRigidArea(new Dimension(0, 10)));
         JButton wiki = new JButton("Open Wiki page");
