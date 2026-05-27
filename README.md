@@ -19,9 +19,8 @@ Search any Old School RuneScape item instantly and see everything about it in on
 - "Used to craft" button expands a full list of every item this ingredient is used in
 
 ### Drop Sources
-- Full drop table for any item: monster name, combat level, drop quantity, and drop rate
-- Click a monster to see its locations and map tile coordinates
-
+- Drop table for any item: monster name, combat level, drop quantity, and drop rate
+  
 ### Equipment Stats
 - Attack and Defence bonuses for every combat style (Stab, Slash, Crush, Magic, Range)
 - Strength, Ranged Strength, Magic Damage %, and Prayer bonus
