@@ -4,13 +4,13 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.osr.jei.model.MonsterInfo;
 import lombok.extern.slf4j.Slf4j;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.Response;
 
+import javax.inject.Inject;
 import javax.inject.Singleton;
-import java.io.InputStreamReader;
-import java.net.HttpURLConnection;
-import java.net.URL;
 import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
@@ -30,6 +30,8 @@ public class MonsterService {
     private static final String WIKI_API   = "https://oldschool.runescape.wiki/api.php";
     private static final String USER_AGENT = "osrs-jei-plugin";
 
+    @Inject private OkHttpClient okHttpClient;
+
     /** absent = never fetched; empty Optional = fetched, no useful data found. */
     private final ConcurrentHashMap<String, Optional<MonsterInfo>> cache =
         new ConcurrentHashMap<>();
@@ -47,7 +49,7 @@ public class MonsterService {
             return result;
         } catch (Exception e) {
             log.warn("[JEI] Monster info fetch failed for '{}': {}", monsterName, e.getMessage());
-            return Optional.empty(); // NOT cached — will retry
+            return Optional.empty();
         }
     }
 
@@ -59,7 +61,7 @@ public class MonsterService {
 
         JsonObject wikitextRoot = fetchJson(WIKI_API
             + "?action=parse&prop=wikitext&format=json&redirects=true&page=" + encoded);
-        if (!wikitextRoot.has("parse")) return Optional.empty();
+        if (wikitextRoot == null || !wikitextRoot.has("parse")) return Optional.empty();
 
         String wikitext = wikitextRoot.getAsJsonObject("parse")
             .getAsJsonObject("wikitext").get("*").getAsString();
@@ -74,18 +76,15 @@ public class MonsterService {
         return Optional.of(new MonsterInfo(monsterName, combat, locations));
     }
 
-    @SuppressWarnings("deprecation")
     private JsonObject fetchJson(String urlStr) throws Exception {
-        URL url = new URL(urlStr);
-        HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-        conn.setConnectTimeout(6_000);
-        conn.setReadTimeout(12_000);
-        conn.setRequestProperty("User-Agent", USER_AGENT);
-        try (InputStreamReader reader = new InputStreamReader(
-                conn.getInputStream(), StandardCharsets.UTF_8)) {
-            return new JsonParser().parse(reader).getAsJsonObject();
-        } finally {
-            conn.disconnect();
+        Request request = new Request.Builder()
+            .url(urlStr)
+            .header("User-Agent", USER_AGENT)
+            .build();
+
+        try (Response response = okHttpClient.newCall(request).execute()) {
+            if (!response.isSuccessful() || response.body() == null) return null;
+            return new JsonParser().parse(response.body().string()).getAsJsonObject();
         }
     }
 

@@ -6,13 +6,13 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.osr.jei.model.DropEntry;
 import lombok.extern.slf4j.Slf4j;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.Response;
 
+import javax.inject.Inject;
 import javax.inject.Singleton;
-import java.io.InputStreamReader;
-import java.net.HttpURLConnection;
-import java.net.URL;
 import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
@@ -25,10 +25,7 @@ import java.util.concurrent.ConcurrentHashMap;
  *  2. GET action=parse&prop=text&section=N to retrieve the rendered HTML for that section.
  *  3. Locate the table whose class includes "item-drops" and parse each <tr>.
  *
- * The rendered table always has columns: Source | Level | Quantity | Rarity.
- * The Rarity column contains the display rate (e.g. "Always", "1/128 (0.78%)").
- *
- * Results are cached per item name.  Network errors are NOT cached.
+ * Results are cached per item name. Network errors are NOT cached.
  */
 @Slf4j
 @Singleton
@@ -37,15 +34,12 @@ public class WikiService {
     private static final String WIKI_API   = "https://oldschool.runescape.wiki/api.php";
     private static final String USER_AGENT = "OSRS-JEI-RuneLite-Plugin/1.0";
 
+    @Inject private OkHttpClient okHttpClient;
+
     private final ConcurrentHashMap<String, List<DropEntry>> dropCache = new ConcurrentHashMap<>();
 
     // ── Public API ─────────────────────────────────────────────────────────────
 
-    /**
-     * Returns every monster/source that drops {@code itemName}, or an empty list
-     * if the item has no "Item sources" section or if the request fails.
-     * Call this on a background thread.
-     */
     @SuppressWarnings("deprecation")
     public List<DropEntry> getDropSources(String itemName) {
         if (dropCache.containsKey(itemName)) return dropCache.get(itemName);
@@ -54,7 +48,6 @@ public class WikiService {
         try {
             String encoded = URLEncoder.encode(itemName.replace(" ", "_"), "UTF-8");
 
-            // ── 1. Find the "Item sources" (or "Sources") section index ───────
             int sectionIndex = findItemSourcesSection(encoded);
             if (sectionIndex < 0) {
                 log.info("[JEI] No 'Item sources' section for '{}'", itemName);
@@ -62,7 +55,6 @@ public class WikiService {
                 return drops;
             }
 
-            // ── 2. Fetch rendered HTML for that section ────────────────────────
             String textUrl = WIKI_API
                 + "?action=parse&prop=text&format=json&section=" + sectionIndex
                 + "&page=" + encoded;
@@ -77,14 +69,12 @@ public class WikiService {
                 .getAsJsonObject("text")
                 .get("*").getAsString();
 
-            // ── 3. Parse the item-drops table ──────────────────────────────────
             drops = parseItemDropsTable(html);
             log.info("[JEI] Drops for '{}': {} entries", itemName, drops.size());
             dropCache.put(itemName, drops);
 
         } catch (Exception e) {
             log.warn("[JEI] Failed to fetch drops for '{}': {}", itemName, e.getMessage());
-            // NOT cached — will retry next time
         }
         return drops;
     }
@@ -104,7 +94,6 @@ public class WikiService {
 
         for (JsonElement el : sections) {
             JsonObject sec   = el.getAsJsonObject();
-            // "line" may contain HTML (e.g. <span>); strip it before comparing
             String title = stripHtml(sec.get("line").getAsString()).toLowerCase();
             if (title.equals("item sources") || title.equals("sources")
                     || title.equals("drop sources") || title.equals("drops")) {
@@ -116,34 +105,21 @@ public class WikiService {
 
     // ── HTML table parser ──────────────────────────────────────────────────────
 
-    /**
-     * Finds the first table whose class contains "item-drops" and extracts one
-     * {@link DropEntry} per data row.
-     *
-     * Expected columns (0-based): 0=Source, 1=Level, 2=Quantity, 3=Rarity.
-     * The Rarity cell already contains the rate fraction, so we store it as the
-     * rate field and leave rarity blank to avoid duplication in the UI.
-     */
     private List<DropEntry> parseItemDropsTable(String html) {
         List<DropEntry> drops = new ArrayList<>();
 
-        // Find the start of the item-drops table
         int markerIdx = html.indexOf("item-drops");
         if (markerIdx < 0) {
             log.debug("[JEI] No item-drops table found in section HTML");
             return drops;
         }
 
-        // Walk back to the opening <table tag
         int tStart = html.lastIndexOf("<table", markerIdx);
         if (tStart < 0) return drops;
-
-        // Walk forward to the closing </table>
         int tEnd = html.indexOf("</table>", markerIdx);
         if (tEnd < 0) return drops;
         String table = html.substring(tStart, tEnd + 8);
 
-        // Use tbody content if present so we skip <thead> header rows
         int tbodyStart = table.indexOf("<tbody>");
         if (tbodyStart >= 0) {
             int tbodyEnd = table.indexOf("</tbody>", tbodyStart);
@@ -152,7 +128,6 @@ public class WikiService {
                 : table.substring(tbodyStart);
         }
 
-        // Iterate <tr> elements
         int pos = 0;
         while (true) {
             int rowStart = table.indexOf("<tr", pos);
@@ -162,16 +137,14 @@ public class WikiService {
             String row = table.substring(rowStart, rowEnd + 5);
             pos = rowEnd + 5;
 
-            // Skip header rows (contain <th> but no <td>)
             if (!row.contains("<td")) continue;
 
             List<String> cells = extractCells(row);
             if (cells.size() < 3) continue;
 
-            String source   = stripHtml(cells.get(0));              // monster name
-            String level    = stripHtml(cells.size() > 1 ? cells.get(1) : ""); // combat level
+            String source   = stripHtml(cells.get(0));
+            String level    = stripHtml(cells.size() > 1 ? cells.get(1) : "");
             String quantity = stripHtml(cells.size() > 2 ? cells.get(2) : "");
-            // Rarity column contains the rate fraction — use it as rate
             String rate     = stripHtml(cells.size() > 3 ? cells.get(3) : "");
 
             if (source.isEmpty()) continue;
@@ -181,7 +154,7 @@ public class WikiService {
             drop.setLevel(level);
             drop.setQuantity(quantity.isEmpty() ? "?" : quantity);
             drop.setRate(rate);
-            drop.setRarity(""); // rate already in the rate field
+            drop.setRarity("");
             drops.add(drop);
         }
         return drops;
@@ -189,7 +162,6 @@ public class WikiService {
 
     // ── HTML utilities ─────────────────────────────────────────────────────────
 
-    /** Extracts the inner HTML of each top-level &lt;td&gt; in a table row. */
     private List<String> extractCells(String row) {
         List<String> cells = new ArrayList<>();
         int pos = 0;
@@ -206,7 +178,6 @@ public class WikiService {
         return cells;
     }
 
-    /** Strips all HTML tags and decodes common entities, returning plain text. */
     private String stripHtml(String html) {
         if (html == null || html.isEmpty()) return "";
         String text = html.replaceAll("<[^>]+>", "");
@@ -224,24 +195,17 @@ public class WikiService {
 
     private JsonObject fetchJson(String urlStr) {
         try {
-            URL url = new URL(urlStr);
-            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-            conn.setRequestMethod("GET");
-            conn.setRequestProperty("User-Agent", USER_AGENT);
-            conn.setConnectTimeout(6_000);
-            conn.setReadTimeout(15_000);
+            Request request = new Request.Builder()
+                .url(urlStr)
+                .header("User-Agent", USER_AGENT)
+                .build();
 
-            int code = conn.getResponseCode();
-            if (code != 200) {
-                log.warn("[JEI] HTTP {} for {}", code, urlStr);
-                return null;
-            }
-
-            try (InputStreamReader reader = new InputStreamReader(
-                    conn.getInputStream(), StandardCharsets.UTF_8)) {
-                return new JsonParser().parse(reader).getAsJsonObject();
-            } finally {
-                conn.disconnect();
+            try (Response response = okHttpClient.newCall(request).execute()) {
+                if (!response.isSuccessful() || response.body() == null) {
+                    log.warn("[JEI] HTTP {} for {}", response.code(), urlStr);
+                    return null;
+                }
+                return new JsonParser().parse(response.body().string()).getAsJsonObject();
             }
         } catch (Exception e) {
             log.warn("[JEI] Request failed: {}", e.getMessage());

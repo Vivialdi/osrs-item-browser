@@ -5,13 +5,13 @@ import com.google.gson.JsonParser;
 import com.osr.jei.model.RecipeInfo;
 import com.osr.jei.model.RecipeIngredient;
 import lombok.extern.slf4j.Slf4j;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.Response;
 
+import javax.inject.Inject;
 import javax.inject.Singleton;
-import java.io.InputStreamReader;
-import java.net.HttpURLConnection;
-import java.net.URL;
 import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
@@ -34,29 +34,18 @@ public class RecipeService {
     private static final String API_BASE =
         "https://oldschool.runescape.wiki/api.php"
         + "?action=parse&prop=wikitext&format=json&redirects=true&page=";
+    private static final String USER_AGENT = "osrs-jei-plugin";
 
-    /**
-     * Raw wikitext cache — populated by both {@link #getRecipe} and
-     * {@link #getWikitext}.  Absent = never fetched; empty-string = fetched
-     * but the page returned no wikitext (missing page / API error).
-     */
+    @Inject private OkHttpClient okHttpClient;
+
     private final ConcurrentHashMap<String, String> wikitextCache =
         new ConcurrentHashMap<>();
 
-    /**
-     * Recipe result cache — absent = never fetched; empty Optional = fetched,
-     * confirmed no recipe; Optional.of(x) = recipe found.
-     */
     private final ConcurrentHashMap<String, Optional<RecipeInfo>> recipeCache =
         new ConcurrentHashMap<>();
 
     // ── Public API ─────────────────────────────────────────────────────────────
 
-    /**
-     * Returns the crafting recipe for {@code itemName}, or empty if the item has
-     * no crafting recipe on the OSRS Wiki or the page couldn't be found.
-     * Network errors are swallowed and return empty (not cached).
-     */
     public Optional<RecipeInfo> getRecipe(String itemName) {
         String key = itemName.toLowerCase(Locale.ROOT);
         Optional<RecipeInfo> cached = recipeCache.get(key);
@@ -71,18 +60,10 @@ public class RecipeService {
             return result;
         } catch (Exception e) {
             log.warn("[JEI] Recipe fetch failed for '{}': {}", itemName, e.getMessage());
-            return Optional.empty(); // NOT cached — will retry next time
+            return Optional.empty();
         }
     }
 
-    /**
-     * Returns the raw wikitext for {@code itemName}'s OSRS Wiki page.
-     * Returns an empty string if the page doesn't exist or a network error occurs.
-     *
-     * <p>If {@link #getRecipe} was already called for this item the wikitext is
-     * returned from cache with zero network overhead.  Otherwise it is fetched
-     * now and cached for both this service and any subsequent recipe call.
-     */
     public String getWikitext(String itemName) {
         String key = itemName.toLowerCase(Locale.ROOT);
         String cached = wikitextCache.get(key);
@@ -98,17 +79,12 @@ public class RecipeService {
 
     // ── Internal helpers ───────────────────────────────────────────────────────
 
-    /**
-     * Returns cached wikitext if present, otherwise fetches it, stores it in
-     * {@link #wikitextCache}, and returns it.  Guaranteed to populate the cache
-     * entry on success (even if the wikitext is empty).
-     */
     private String ensureWikitext(String itemName, String key) throws Exception {
         String cached = wikitextCache.get(key);
         if (cached != null) return cached;
 
         String wikitext = fetchWikitext(itemName);
-        wikitextCache.put(key, wikitext); // always cache, even empty-string
+        wikitextCache.put(key, wikitext);
         return wikitext;
     }
 
@@ -117,30 +93,25 @@ public class RecipeService {
     @SuppressWarnings("deprecation")
     private String fetchWikitext(String itemName) throws Exception {
         String encoded = URLEncoder.encode(itemName.replace(" ", "_"), "UTF-8");
-        URL url = new URL(API_BASE + encoded);
 
-        HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-        conn.setConnectTimeout(6_000);
-        conn.setReadTimeout(12_000);
-        conn.setRequestProperty("User-Agent", "osrs-jei-plugin");
+        Request request = new Request.Builder()
+            .url(API_BASE + encoded)
+            .header("User-Agent", USER_AGENT)
+            .build();
 
-        try (InputStreamReader reader = new InputStreamReader(
-                conn.getInputStream(), StandardCharsets.UTF_8)) {
-
-            JsonObject root = new JsonParser().parse(reader).getAsJsonObject();
-            if (!root.has("parse")) return ""; // missing page / API error
+        try (Response response = okHttpClient.newCall(request).execute()) {
+            if (!response.isSuccessful() || response.body() == null) return "";
+            JsonObject root = new JsonParser().parse(response.body().string()).getAsJsonObject();
+            if (!root.has("parse")) return "";
             return root.getAsJsonObject("parse")
                 .getAsJsonObject("wikitext")
                 .get("*").getAsString();
-        } finally {
-            conn.disconnect();
         }
     }
 
     // ── Wikitext parsing ───────────────────────────────────────────────────────
 
     private Optional<RecipeInfo> parseWikitext(String wikitext) {
-        // The OSRS Wiki uses {{Recipe|...}} — case-insensitive search
         String lower = wikitext.toLowerCase(Locale.ROOT);
         int startIdx = lower.indexOf("{{recipe\n");
         if (startIdx == -1) startIdx = lower.indexOf("{{recipe|");
@@ -159,13 +130,9 @@ public class RecipeService {
         Map<String, String> p = parseParams(block);
         log.debug("[JEI] Recipe params: {}", p.keySet());
 
-        // ── Skill (skill1 is the main field; skill2 exists for dual-skill recipes) ──
         String skill = clean(coalesce(p, "skill1", "skill2", "skill"));
-
-        // ── Level ──────────────────────────────────────────────────────────────
         int level = firstInt(clean(coalesce(p, "skill1lvl", "skill2lvl", "level", "lvl")));
 
-        // ── Facility — combine tools + facilities when both are present ─────────
         String tools      = clean(coalesce(p, "tools", "tool"));
         String facilities = clean(coalesce(p, "facilities", "facility", "location"));
         for (String bad : new String[]{"none", "n/a", "inventory", "no"}) {
@@ -181,10 +148,8 @@ public class RecipeService {
             facility = facilities;
         }
 
-        // ── XP ─────────────────────────────────────────────────────────────────
         double xp = firstDouble(clean(coalesce(p, "skill1exp", "skill2exp", "experience", "xp")));
 
-        // ── Ingredients — mat1/mat1quantity … mat10/mat10quantity ─────────────
         List<RecipeIngredient> ingredients = new ArrayList<>();
         for (int i = 1; i <= 10; i++) {
             String mat = clean(p.getOrDefault("mat" + i, "")).trim();
