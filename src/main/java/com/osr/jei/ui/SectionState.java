@@ -16,6 +16,7 @@ public final class SectionState {
     public static final String DROPS = "drops";
     public static final String CRAFTING = "crafting";
     public static final String LOCATIONS = "locations";
+    public static final String TRADING = "trading";
 
     private final Map<String, Boolean> expanded = new HashMap<>();
 

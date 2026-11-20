@@ -23,10 +23,10 @@ public class SectionSummaryTest {
         ShopEntry tokkul = shop("TzHaar-Mej-Roh's Rune Store", 20, "Tokkul");
         ShopEntry aubury = shop("Aubury's Rune Shop", 4, "gp");
         List<ShopEntry> shops = Arrays.asList(guild, tokkul, aubury);
-        assertEquals("Shop sources (3) \u2014 cheapest 4\u00a0gp", SectionSummaries.shops(shops));
-        assertEquals("Shop sources (1) \u2014 4\u00a0gp", SectionSummaries.shops(Collections.singletonList(aubury)));
+        assertEquals("Shop sources (3) \u00b7 cheapest 4\u00a0gp", SectionSummaries.shops(shops));
+        assertEquals("Shop sources (1) \u00b7 4\u00a0gp", SectionSummaries.shops(Collections.singletonList(aubury)));
         assertEquals(
-            "Shop sources (2) \u2014 cheapest 5\u00a0Tokkul",
+            "Shop sources (2) \u00b7 cheapest 5\u00a0Tokkul",
             SectionSummaries.shops(Arrays.asList(shop("TzHaar", 15, "Tokkul"), shop("Other", 5, "Tokkul"))));
     }
 
@@ -35,21 +35,21 @@ public class SectionSummaryTest {
         DropEntry rare = drop("Abyssal demon", "1/1000");
         DropEntry common = drop("Goblin", "1/16");
         assertEquals(
-            "Dropped by (2) \u2014 Goblin 1/16",
+            "Dropped by (2) \u00b7 Goblin 1/16",
             SectionSummaries.drops(Arrays.asList(rare, common)));
-        assertEquals("Dropped by (1) \u2014 Goblin 1/16", SectionSummaries.drops(Collections.singletonList(common)));
+        assertEquals("Dropped by (1) \u00b7 Goblin 1/16", SectionSummaries.drops(Collections.singletonList(common)));
     }
 
     @Test
     public void useCraftingEquipmentAndLocationHeadersStayShort() {
-        assertEquals("Used to craft (1) \u2014 Staff of air", SectionSummaries.uses(Collections.singletonList("Staff of air")));
+        assertEquals("Used to craft (1) \u00b7 Staff of air", SectionSummaries.uses(Collections.singletonList("Staff of air")));
         assertEquals("Used to craft (27)", SectionSummaries.uses(Collections.nCopies(27, "Product")));
         RecipeInfo runecraft = new RecipeInfo("Runecraft", 1, "Air tiara, Air talisman", 5, Collections.emptyList());
-        assertEquals("Crafting (2) \u2014 Runecraft (Lv. 1)", SectionSummaries.crafting(Arrays.asList(runecraft, runecraft)));
-        assertEquals("Equipment \u2014 2h", SectionSummaries.equipment("2h", true));
-        assertEquals("Equipment \u2014 Weapon, two-handed", SectionSummaries.equipment("Weapon", true));
+        assertEquals("Crafting (2) \u00b7 Runecraft (Lv. 1)", SectionSummaries.crafting(Arrays.asList(runecraft, runecraft)));
+        assertEquals("Equipment \u00b7 2h", SectionSummaries.equipment("2h", true));
+        assertEquals("Equipment \u00b7 Weapon, two-handed", SectionSummaries.equipment("Weapon", true));
         assertEquals(
-            "Locations (2) \u2014 Lumbridge Swamp",
+            "Locations (2) \u00b7 Lumbridge Swamp",
             SectionSummaries.locations(Arrays.asList("Lumbridge Swamp", "Varrock Sewers")));
     }
 

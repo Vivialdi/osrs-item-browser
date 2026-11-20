@@ -13,10 +13,13 @@ import net.runelite.client.ui.PluginPanel;
 import org.junit.Test;
 
 import javax.imageio.ImageIO;
+import javax.swing.BoxLayout;
 import javax.swing.BorderFactory;
+import javax.swing.JComboBox;
 import javax.swing.Box;
 import javax.swing.JComponent;
 import javax.swing.JLabel;
+import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.ScrollPaneConstants;
 import javax.swing.SwingUtilities;
@@ -31,7 +34,9 @@ import java.io.File;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.Assert.assertEquals;
@@ -56,7 +61,7 @@ public class DetailPaneLayoutTest {
             UiStyle style = UiStyle.from(12, FontStyleChoice.REGULAR, FontFamilyChoice.SANS_SERIF);
             SectionState state = new SectionState();
             CollapsibleSection section = new CollapsibleSection(SectionState.SHOPS, state, style);
-            section.setTitle("Shop sources (3) \u2014 cheapest 4 gp");
+            section.setTitle("Shop sources (3) \u00b7 cheapest 4 gp");
             JLabel row = new JLabel("Aubury's Rune Shop");
             section.body().add(row);
             AtomicInteger reloads = new AtomicInteger();
@@ -91,6 +96,10 @@ public class DetailPaneLayoutTest {
                 assertTrue(visibleText(narrow.detail).contains("cheapest"));
                 assertFalse(visibleText(narrow.detail).contains("Magic Guild Store"));
                 assertTrue(visibleText(open.detail).contains("Magic Guild Store"));
+                assertFalse(visibleText(open.detail).contains("\u2014"));
+                assertTrue(visibleText(open.detail).contains("Show on map"));
+                assertFalse(visibleText(narrow.detail).contains("Instant sell"));
+                assertTrue(visibleText(narrow.detail).contains("High Alch"));
                 assertFalse(joinedVisibleLabels(narrow.detail).contains("Instant sell")
                     && joinedVisibleLabels(narrow.detail).contains("after tax")
                     && joinedVisibleLabels(narrow.detail).contains("Per 4h")
@@ -101,6 +110,58 @@ public class DetailPaneLayoutTest {
                 write(narrow.image, "air-rune-225.png");
                 write(wide.image, "air-rune-350.png");
                 write(open.image, "air-rune-225-open.png");
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        });
+    }
+
+    @Test
+    public void sidebarFillsWidthAndDropsTheEmptyResultsGap() throws Exception {
+        SwingUtilities.invokeAndWait(() -> {
+            try {
+                Render empty = sidebar(PluginPanel.PANEL_WIDTH, false);
+                Render wideEmpty = sidebar(350, false);
+                Render results = sidebar(PluginPanel.PANEL_WIDTH, true);
+                Render wideResults = sidebar(350, true);
+                assertTrue(empty.detail.getHeight() < 420);
+                assertTrue(wideEmpty.detail.getHeight() < 420);
+                assertNoOverflow(empty);
+                assertNoOverflow(results);
+                assertNoOverflow(wideResults);
+                IconGridPanel resultGrid = findGrid(results.detail, 14);
+                assertTrue(resultGrid != null);
+                int right = 0;
+                for (Component child : resultGrid.getComponents()) {
+                    right = Math.max(right, child.getX() + child.getWidth());
+                }
+                assertTrue("icons should fill the row, right=" + right + " width=" + resultGrid.getWidth(),
+                    right > resultGrid.getWidth() - 40);
+                write(empty.image, "sidebar-empty-225.png");
+                write(wideEmpty.image, "sidebar-empty-350.png");
+                write(results.image, "sidebar-results-225.png");
+                write(wideResults.image, "sidebar-results-350.png");
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        });
+    }
+
+    @Test
+    public void indentedTreeNodesWrapInsteadOfClipping() throws Exception {
+        SwingUtilities.invokeAndWait(() -> {
+            try {
+                Render tree = treePane(PluginPanel.PANEL_WIDTH);
+                assertNoOverflow(tree);
+                JLabel have = findText(tree.detail, "have 0+ / need 1");
+                JLabel name = findText(tree.detail, "Daeyalt essence");
+                assertTrue(have != null && name != null);
+                assertTrue(have != name);
+                Point haveAt = SwingUtilities.convertPoint(have.getParent(), have.getX(), have.getY(), tree.detail);
+                Point nameAt = SwingUtilities.convertPoint(name.getParent(), name.getX(), name.getY(), tree.detail);
+                assertTrue(haveAt.y > nameAt.y);
+                assertTrue(nameAt.x > 24);
+                write(tree.image, "air-rune-tree-225.png");
             } catch (Exception e) {
                 throw new RuntimeException(e);
             }
@@ -134,6 +195,27 @@ public class DetailPaneLayoutTest {
             label.getHeight() > line + 2);
     }
 
+    private static JLabel findText(Component component, String snippet) {
+        if (!component.isVisible()) {
+            return null;
+        }
+        if (component instanceof JLabel) {
+            String text = ((JLabel) component).getText();
+            if (text != null && text.contains(snippet)) {
+                return (JLabel) component;
+            }
+        }
+        if (component instanceof Container) {
+            for (Component child : ((Container) component).getComponents()) {
+                JLabel found = findText(child, snippet);
+                if (found != null) {
+                    return found;
+                }
+            }
+        }
+        return null;
+    }
+
     private static JLabel findLabel(Component component, String snippet) {
         if (!component.isVisible()) {
             return null;
@@ -154,6 +236,180 @@ public class DetailPaneLayoutTest {
             }
         }
         return null;
+    }
+
+    private static IconGridPanel findGrid(Component component, int count) {
+        if (component instanceof IconGridPanel && ((IconGridPanel) component).getComponentCount() == count) {
+            return (IconGridPanel) component;
+        }
+        if (component instanceof Container) {
+            for (Component child : ((Container) component).getComponents()) {
+                IconGridPanel found = findGrid(child, count);
+                if (found != null) {
+                    return found;
+                }
+            }
+        }
+        return null;
+    }
+
+    private static Render sidebar(int width, boolean results) {
+        JPanel panel = new JPanel();
+        panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
+        panel.setBackground(ColorScheme.DARK_GRAY_COLOR);
+        panel.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
+        JPanel search = new JPanel(new java.awt.BorderLayout(4, 0));
+        search.setOpaque(false);
+        search.setAlignmentX(0f);
+        JLabel field = new JLabel(results ? "  air rune" : "  Search");
+        field.setOpaque(true);
+        field.setBackground(ColorScheme.DARKER_GRAY_COLOR);
+        field.setForeground(Color.WHITE);
+        field.setPreferredSize(new Dimension(40, 28));
+        search.add(field, java.awt.BorderLayout.CENTER);
+        search.add(new StarButton("Show favourites"), java.awt.BorderLayout.EAST);
+        search.setMaximumSize(new Dimension(Integer.MAX_VALUE, 28));
+        panel.add(search);
+        panel.add(Box.createRigidArea(new Dimension(0, 4)));
+        JPanel filters = new JPanel(new java.awt.GridLayout(2, 2, 4, 3));
+        filters.setOpaque(false);
+        filters.setAlignmentX(0f);
+        filters.add(new JComboBox<>(new String[]{"Any trade"}));
+        filters.add(new JComboBox<>(new String[]{"Any world"}));
+        filters.add(new JComboBox<>(new String[]{"Any item"}));
+        filters.add(new JComboBox<>(new String[]{"Any slot"}));
+        filters.setMaximumSize(new Dimension(Integer.MAX_VALUE, 52));
+        panel.add(filters);
+        panel.add(iconStrip("Favourites", 4));
+        panel.add(iconStrip("Recent", 8));
+        if (results) {
+            panel.add(Box.createRigidArea(new Dimension(0, 6)));
+            panel.add(iconStrip("Results", 14));
+        }
+        panel.setSize(width, 20);
+        panel.setSize(width, panel.getPreferredSize().height);
+        layoutDeep(panel);
+        panel.setSize(width, panel.getPreferredSize().height);
+        layoutDeep(panel);
+        BufferedImage image = new BufferedImage(width, Math.max(40, panel.getHeight()), BufferedImage.TYPE_INT_RGB);
+        Graphics2D graphics = image.createGraphics();
+        graphics.setColor(ColorScheme.DARK_GRAY_COLOR);
+        graphics.fillRect(0, 0, image.getWidth(), image.getHeight());
+        panel.paint(graphics);
+        graphics.dispose();
+        return new Render(panel, image);
+    }
+
+    private static JPanel iconStrip(String title, int count) {
+        JPanel strip = new JPanel();
+        strip.setLayout(new BoxLayout(strip, BoxLayout.Y_AXIS));
+        strip.setOpaque(false);
+        strip.setAlignmentX(0f);
+        JLabel label = new JLabel(title);
+        label.setForeground(MUTED);
+        strip.add(label);
+        IconGridPanel icons = new IconGridPanel(32, 4);
+        icons.setBackground(ColorScheme.DARKER_GRAY_COLOR);
+        for (int i = 0; i < count; i++) {
+            JPanel cell = new JPanel();
+            cell.setBackground(new Color(80 + i * 8, 70, 40));
+            cell.setPreferredSize(new Dimension(32, 32));
+            icons.add(cell);
+        }
+        strip.add(icons);
+        strip.setMaximumSize(new Dimension(Integer.MAX_VALUE, 200));
+        return strip;
+    }
+
+    private static Render treePane(int width) {
+        UiStyle style = UiStyle.from(12, FontStyleChoice.REGULAR, FontFamilyChoice.SANS_SERIF);
+        RecipeInfo nested = new RecipeInfo(
+            "Runecraft", 27, "Air Altar", 7.5,
+            Collections.singletonList(new RecipeIngredient("Daeyalt essence", 1)),
+            1, "");
+        ItemDetails child = new ItemDetails(
+            Collections.singletonList(nested),
+            java.util.Optional.empty(),
+            0,
+            Collections.emptyList(),
+            Collections.emptyList(),
+            Collections.emptyList());
+        RecipeInfo rootRecipe = new RecipeInfo(
+            "Runecraft", 1, "Air tiara, Air talisman + Air Altar", 7.5,
+            Collections.singletonList(new RecipeIngredient("Pure essence", 1)),
+            1, "");
+        ItemDetails root = new ItemDetails(
+            Collections.singletonList(rootRecipe),
+            java.util.Optional.empty(),
+            0,
+            Collections.emptyList(),
+            Collections.emptyList(),
+            Collections.emptyList());
+        Set<String> open = new LinkedHashSet<>();
+        open.add("0" + BuildExpander.SEP + "Pure essence");
+        BuildExpander.Result tree = BuildExpander.expandSelected("Air rune", 556, root, new com.osr.jei.crafting.RecipePages() {
+            @Override
+            public ItemDetails cached(String itemName) {
+                return "Pure essence".equals(itemName) ? child : null;
+            }
+
+            @Override
+            public ItemDetails load(String itemName) {
+                throw new AssertionError("tree view must not fetch");
+            }
+
+            @Override
+            public Integer idFor(String itemName) {
+                return null;
+            }
+        }, open);
+        ScrollWidthPanel detail = new ScrollWidthPanel();
+        detail.setBackground(ColorScheme.DARKER_GRAY_COLOR);
+        detail.setOpaque(true);
+        detail.setBorder(BorderFactory.createEmptyBorder(6, 6, 6, 6));
+        RecipeTreeView.Counts counts = new RecipeTreeView.Counts() {
+            @Override
+            public boolean show() {
+                return true;
+            }
+
+            @Override
+            public boolean inventoryKnown() {
+                return true;
+            }
+
+            @Override
+            public boolean bankKnown() {
+                return false;
+            }
+
+            @Override
+            public Long have(String itemName) {
+                return "Daeyalt essence".equals(itemName) ? Long.valueOf(0) : null;
+            }
+        };
+        RecipeTreeView.fill(detail, style, tree, true, idleActions(), counts, null, false);
+        return paintPanel(detail, width);
+    }
+
+    private static Render paintPanel(JComponent detail, int width) {
+        JScrollPane scroll = new JScrollPane(detail);
+        scroll.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
+        scroll.setBorder(BorderFactory.createEmptyBorder());
+        scroll.setSize(width, 720);
+        scroll.doLayout();
+        int viewWidth = Math.max(1, scroll.getViewport().getWidth());
+        detail.setSize(viewWidth, Math.max(40, detail.getPreferredSize().height));
+        layoutDeep(detail);
+        detail.setSize(viewWidth, Math.max(40, detail.getPreferredSize().height));
+        layoutDeep(detail);
+        BufferedImage image = new BufferedImage(width, Math.max(detail.getHeight(), 40), BufferedImage.TYPE_INT_RGB);
+        Graphics2D graphics = image.createGraphics();
+        graphics.setColor(ColorScheme.DARKER_GRAY_COLOR);
+        graphics.fillRect(0, 0, image.getWidth(), image.getHeight());
+        detail.paint(graphics);
+        graphics.dispose();
+        return new Render(detail, image);
     }
 
     private static Render render(int width, boolean openLists) {
@@ -217,35 +473,37 @@ public class DetailPaneLayoutTest {
         PriceQuote quote = new PriceQuote(6, 5, 5);
         MarketQuote market = MarketQuote.describe(false, 556, quote, 12_000, true);
         List<StatGrid.Row> rows = new ArrayList<>();
+        List<StatGrid.Row> tradingRows = new ArrayList<>();
         rows.add(new StatGrid.Row("", TradeCopy.geLine(false, true, quote), GOLD));
         for (MarketQuote.Line line : market.lines) {
-            Color color = line.tone < 0 ? BAD : NEUTRAL;
-            rows.add(new StatGrid.Row(line.key, line.value, color));
+            StatGrid.Row row = new StatGrid.Row(line.key, line.value, line.tone < 0 ? BAD : NEUTRAL);
+            if ("Limit".equals(line.key) || "Buy limit".equals(line.key)) {
+                rows.add(row);
+            } else if (!"Reference only".equals(line.value)) {
+                tradingRows.add(row);
+            }
         }
         StatGrid grid = new StatGrid(style);
         grid.setRows(rows);
         detail.add(grid);
+        CollapsibleSection trading = new CollapsibleSection(SectionState.TRADING, state, style);
+        trading.setTitle("Trading details");
+        StatGrid tradingGrid = new StatGrid(style);
+        tradingGrid.setRows(tradingRows);
+        trading.body().add(tradingGrid);
+        detail.add(trading);
 
         WrappingLabel alch = new WrappingLabel();
         style.apply(alch, "body");
         alch.setForeground(NEUTRAL);
         alch.setHtml("High Alch: 2 gp");
         detail.add(alch);
-        WrappingLabel profit = new WrappingLabel();
-        style.apply(profit, "body");
-        profit.setForeground(BAD);
-        profit.setHtml("Profit: -173 gp");
-        detail.add(profit);
 
         CollapsibleSection shops = new CollapsibleSection(SectionState.SHOPS, state, style);
         shops.setTitle(SectionSummaries.shops(sampleShops()));
         for (ShopEntry shop : sampleShops()) {
             TradeCopy.ShopLine line = TradeCopy.shop(false, shop, 6);
-            WrappingLabel row = new WrappingLabel();
-            style.apply(row, "small");
-            row.setHtml(SectionSummaries.shopHtml(shop, line));
-            row.setToolTipText(SectionSummaries.shopPlain(shop, line));
-            shops.body().add(row);
+            shops.body().add(ShopRows.row(style, shop, line, () -> { }, () -> { }));
         }
         detail.add(shops);
 

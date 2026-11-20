@@ -76,7 +76,7 @@ Use a normal account first, then an ironman account for the ironman steps. Have 
 ## Grand Exchange and ironman
 
 23. With **GE prices** on, open a tradeable item.
-    - Expected: instant buy, instant sell, post-tax margin, buy limit, and the 4-hour figure. High alch shows, with profit only when the nature-rune price is known.
+   - Expected: the always-visible block is the GE guide price, the buy limit, and high alch. Instant sell, post-tax margin, the 4-hour total, and alch profit are under **Trading details**. High alch profit is not on the always-visible block.
     - Screenshot: README slot 5 (`docs/ge-margin.png`).
 24. If a line says the price data is some number of minutes or hours old, leave it.
     - Expected: the age is on screen. The panel does not keep requesting prices while that snapshot is still in date.
@@ -97,8 +97,8 @@ Use a normal account first, then an ironman account for the ironman steps. Have 
     - Expected: the location view says the wiki could not be reached and offers **Retry**, rather than "No locations are listed."
 30. Search for an item the wiki does not have a page for, if you have one in the index.
     - Expected: "The OSRS Wiki has no page for this item." Retry is available and does not repeat on its own.
-31. Drag the detail divider, then resize the client window narrower and wider. Open an item with a long shop name (Air rune) and expand **Shop sources** and **Crafting**.
-   - Expected: both panes stay usable. Shop names, recipe lines, and GE figures wrap to the sidebar. Nothing is cut off and there is no horizontal scrollbar. The divider does not collapse a pane. The new share is still the value in **Detail pane share** after you reopen the config.
+31. With no search, then search for `rune`, then drag the sidebar narrower and wider. Open Air rune and expand **Shop sources** and the crafting tree.
+   - Expected: with no search, the results area does not leave a blank block; Favourites and Recent stay. Filters are a 2 by 2 grid. Icon rows fill the width. Shop names wrap, the price is its own column, and **Show on map** drops a world-map pin after one wiki read. Ingredient rows wrap beside the icon, including indented nodes. Nothing is cut off. The divider share is still **Detail pane share** after you reopen the config.
 32. Change font size, style, and family while an item is open, then narrow the sidebar again.
    - Expected: the sidebar text updates immediately, including collapsed headers and an open drop list, and the lines reflow to the new font and width.
 33. Open Air rune, or any item with a long shop list, and do not click the section headers.

@@ -39,9 +39,13 @@ import com.osr.jei.service.ItemDetails;
 import com.osr.jei.service.ItemDetailsService;
 import com.osr.jei.service.MonsterService;
 import com.osr.jei.service.PriceService;
+import com.osr.jei.map.MapMarkers;
 import com.osr.jei.ui.CollapsibleSection;
 import com.osr.jei.ui.EllipsisLabel;
+import com.osr.jei.ui.IconGridPanel;
 import com.osr.jei.ui.RecipeTreeView;
+import com.osr.jei.ui.ShopRows;
+import com.osr.jei.ui.StarButton;
 import com.osr.jei.ui.ScrollWidthPanel;
 import com.osr.jei.ui.SectionState;
 import com.osr.jei.ui.SectionSummaries;
@@ -91,6 +95,7 @@ import javax.swing.plaf.basic.BasicSplitPaneDivider;
 import javax.swing.plaf.basic.BasicSplitPaneUI;
 import java.awt.BorderLayout;
 import java.awt.Color;
+import java.awt.GridLayout;
 import java.awt.Component;
 import java.awt.Cursor;
 import java.awt.Dimension;
@@ -155,6 +160,7 @@ public class JEIPanel extends PluginPanel {
     @Inject private MonsterService monsterService;
     @Inject private WikiHttp wikiHttp;
     @Inject private PlayerProgress progress;
+    @Inject private MapMarkers mapMarkers;
 
     private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor(daemon("jei-schedule"));
     private final ExecutorService searchExecutor = Executors.newSingleThreadExecutor(daemon("jei-search"));
@@ -189,21 +195,27 @@ public class JEIPanel extends PluginPanel {
     private ScheduledFuture<?> pendingDetail;
 
     private JSplitPane split;
-    private JPanel gridPanel;
+    private IconGridPanel gridPanel;
+    private JScrollPane gridScroll;
+    private boolean resultsOpen;
     private JPanel selectedCell;
     private JScrollPane detailScroll;
     private JPanel historyPanel;
+    private JPanel favouritesPanel;
+    private IconGridPanel favouriteIcons;
     private JPanel historyIcons;
     private JLabel indexStatus;
-    private JToggleButton favToggle;
+    private StarButton favToggle;
     private JButton backButton;
-    private JButton starButton;
+    private StarButton starButton;
     private JButton wikiButton;
     private JPanel nameRow;
     private WrappingLabel lblName;
     private JLabel lblIronman;
     private JPanel marketBox;
     private StatGrid marketGrid;
+    private CollapsibleSection tradingSection;
+    private JPanel tradingContent;
     private WrappingLabel lblOwned;
     private WrappingLabel lblMembersWeight;
     private WrappingLabel lblHaAlch;
@@ -281,7 +293,10 @@ public class JEIPanel extends PluginPanel {
         loadFavourites();
         loadRecent();
 
-        historyPanel = buildHistoryBar();
+        favouritesPanel = buildIconStrip("Favourites", true);
+        favouriteIcons = (IconGridPanel) favouritesPanel.getClientProperty("icons");
+        historyPanel = buildIconStrip("Recent", false);
+        historyIcons = (IconGridPanel) historyPanel.getClientProperty("icons");
         indexStatus = plainLabel("Waiting for the game cache\u2026", "small", MUTED);
         JPanel north = new JPanel();
         north.setLayout(new BoxLayout(north, BoxLayout.Y_AXIS));
@@ -289,6 +304,7 @@ public class JEIPanel extends PluginPanel {
         north.add(buildSearchBar());
         north.add(buildFilterBar());
         north.add(indexStatus);
+        north.add(favouritesPanel);
         north.add(historyPanel);
         add(north, BorderLayout.NORTH);
         add(buildContent(), BorderLayout.CENTER);
@@ -380,6 +396,9 @@ public class JEIPanel extends PluginPanel {
         }
         if (wikiHttp != null) {
             wikiHttp.shutdown();
+        }
+        if (mapMarkers != null) {
+            mapMarkers.clear();
         }
         searchExecutor.shutdownNow();
         scheduler.shutdownNow();
@@ -563,25 +582,15 @@ public class JEIPanel extends PluginPanel {
             @Override public void changedUpdate(DocumentEvent e) { onSearch(searchBar.getText()); }
         });
 
-        favToggle = new JToggleButton("\u2606");
-        style.apply(favToggle, "button");
-        favToggle.setForeground(GOLD);
-        favToggle.setOpaque(false);
-        favToggle.setBorderPainted(false);
-        favToggle.setFocusPainted(false);
-        favToggle.setContentAreaFilled(false);
-        favToggle.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
-        favToggle.setToolTipText("Show favourites");
-        favToggle.setPreferredSize(new Dimension(28, 30));
+        favToggle = new StarButton("Show favourites in the results");
         favToggle.addActionListener(e -> {
             if (favToggle.isSelected()) {
-                favToggle.setText("\u2605");
-                favToggle.setToolTipText("Show all items");
+                favToggle.setToolTipText("Show the search results");
                 lastGridItems = buildFavouritesList();
                 populateGrid(lastGridItems);
+                showResultGrid(true);
             } else {
-                favToggle.setText("\u2606");
-                favToggle.setToolTipText("Show favourites");
+                favToggle.setToolTipText("Show favourites in the results");
                 onSearch(lastSearchQuery);
             }
         });
@@ -594,11 +603,32 @@ public class JEIPanel extends PluginPanel {
     }
 
     private JPanel buildFilterBar() {
-        JPanel bar = new JPanel(new WrapLayout(FlowLayout.LEFT, 4, 2)) {
+        JPanel bar = new JPanel(new GridLayout(2, 2, 4, 3)) {
+            @Override
+            public Dimension getPreferredSize() {
+                int width = getWidth();
+                if (width <= 0 && getParent() != null) {
+                    width = getParent().getWidth();
+                }
+                if (width <= 0) {
+                    width = PANEL_WIDTH - 16;
+                }
+                int rowHeight = 22;
+                for (Component child : getComponents()) {
+                    rowHeight = Math.max(rowHeight, child.getPreferredSize().height);
+                }
+                return new Dimension(width, rowHeight * 2 + 3);
+            }
+
             @Override
             public Dimension getMaximumSize() {
                 Dimension preferred = getPreferredSize();
                 return new Dimension(Integer.MAX_VALUE, preferred.height);
+            }
+
+            @Override
+            public Dimension getMinimumSize() {
+                return new Dimension(0, getPreferredSize().height);
             }
         };
         bar.setBackground(ColorScheme.DARK_GRAY_COLOR);
@@ -670,10 +700,11 @@ public class JEIPanel extends PluginPanel {
     }
 
     private JComponent buildContent() {
-        gridPanel = new JPanel(new WrapLayout(FlowLayout.LEFT, 2, 2));
+        gridPanel = new IconGridPanel(36, 4);
         gridPanel.setBackground(ColorScheme.DARKER_GRAY_COLOR);
-        JScrollPane gridScroll = scroll(gridPanel);
-        gridScroll.setMinimumSize(new Dimension(0, 72));
+        gridScroll = scroll(gridPanel);
+        gridScroll.setMinimumSize(new Dimension(0, 0));
+        gridScroll.setVisible(false);
 
         detailScroll = scroll(buildDetailPanel());
         detailScroll.setMinimumSize(new Dimension(0, 120));
@@ -690,8 +721,8 @@ public class JEIPanel extends PluginPanel {
         split.setBorder(null);
         split.setDividerSize(6);
         split.setBackground(ColorScheme.DARK_GRAY_COLOR);
-        split.setResizeWeight(0.55);
-        applyResizeWeight();
+        split.setResizeWeight(0);
+        split.setDividerSize(0);
         return split;
     }
 
@@ -709,10 +740,7 @@ public class JEIPanel extends PluginPanel {
         lblName.setForeground(Color.WHITE);
         setWrap(lblName, "Search for an item above");
 
-        starButton = linkButton("\u2606", "button");
-        starButton.setForeground(GOLD);
-        starButton.setMargin(new Insets(0, 2, 0, 0));
-        starButton.setToolTipText("Add to favourites");
+        starButton = new StarButton("Add to favourites");
         starButton.setVisible(false);
         starButton.addActionListener(e -> {
             SearchItem current = findByName(selectedItemName);
@@ -766,8 +794,11 @@ public class JEIPanel extends PluginPanel {
         priceRetry.addActionListener(e -> retryPrices());
         marketGrid = new StatGrid(style);
         marketGrid.setVisible(false);
+        tradingSection = collapsible(SectionState.TRADING);
+        tradingContent = tradingSection.body();
         marketBox = verticalBox();
         marketBox.add(marketGrid);
+        marketBox.add(tradingSection);
         marketBox.add(lblPriceNote);
         marketBox.add(priceRetry);
 
@@ -780,7 +811,6 @@ public class JEIPanel extends PluginPanel {
         lblAlchProfit.setVisible(false);
         alchBox = verticalBox();
         alchBox.add(lblHaAlch);
-        alchBox.add(lblAlchProfit);
 
         equipmentSection = collapsible(SectionState.EQUIPMENT);
         equipmentContent = equipmentSection.body();
@@ -963,8 +993,7 @@ public class JEIPanel extends PluginPanel {
         }
         if (favToggle != null && favToggle.isSelected() && query != null && !query.trim().isEmpty()) {
             favToggle.setSelected(false);
-            favToggle.setText("\u2606");
-            favToggle.setToolTipText("Show favourites");
+            favToggle.setToolTipText("Show favourites in the results");
         }
         if (query == null || query.trim().length() < 2) {
             lastSearchQuery = "";
@@ -977,6 +1006,7 @@ public class JEIPanel extends PluginPanel {
             lastGridItems = Collections.emptyList();
             gridPanel.revalidate();
             gridPanel.repaint();
+            showResultGrid(false);
             return;
         }
         String lower = query.trim().toLowerCase(java.util.Locale.ROOT);
@@ -996,6 +1026,7 @@ public class JEIPanel extends PluginPanel {
                 }
                 lastGridItems = results;
                 populateGrid(results);
+                showResultGrid(true);
             });
         }), SEARCH_DEBOUNCE_MS, TimeUnit.MILLISECONDS);
     }
@@ -1021,13 +1052,45 @@ public class JEIPanel extends PluginPanel {
         }
         gridPanel.revalidate();
         gridPanel.repaint();
+        boolean searching = lastSearchQuery != null && lastSearchQuery.length() >= 2;
+        showResultGrid(searching || (favToggle != null && favToggle.isSelected()));
+    }
+
+    private void showResultGrid(boolean show) {
+        if (split == null || gridScroll == null || resultsOpen == show) {
+            if (show && split != null && split.getDividerLocation() <= 0 && split.getHeight() > 0) {
+                applyResizeWeight();
+                applyDividerFromConfig();
+            }
+            return;
+        }
+        resultsOpen = show;
+        gridScroll.setVisible(show);
+        if (show) {
+            gridScroll.setMinimumSize(new Dimension(0, 72));
+            split.setDividerSize(6);
+            applyResizeWeight();
+            if (split.getHeight() > 0) {
+                applyDividerFromConfig();
+            }
+        } else {
+            gridScroll.setMinimumSize(new Dimension(0, 0));
+            gridScroll.setPreferredSize(new Dimension(0, 0));
+            split.setDividerSize(0);
+            split.setResizeWeight(0);
+            if (split.getHeight() > 0) {
+                split.setDividerLocation(0);
+            }
+        }
+        split.revalidate();
+        split.repaint();
     }
 
     private JPanel buildItemCell(SearchItem item) {
         boolean favourite = isFavourite(item.id);
         JPanel cell = new JPanel(new BorderLayout());
         cell.putClientProperty("itemId", item.id);
-        cell.setPreferredSize(new Dimension(38, 38));
+        cell.setPreferredSize(new Dimension(36, 36));
         cell.setBackground(ColorScheme.DARKER_GRAY_COLOR);
         cell.setBorder(BorderFactory.createLineBorder(favourite ? GOLD : new Color(25, 25, 25), favourite ? 2 : 1));
         cell.setToolTipText(favourite ? "\u2605 " + item.name : item.name);
@@ -1106,6 +1169,9 @@ public class JEIPanel extends PluginPanel {
         }
         int gen = detailGeneration.incrementAndGet();
         monsterGeneration.incrementAndGet();
+        if (mapMarkers != null) {
+            mapMarkers.clear();
+        }
         openMonsters.clear();
         locationViews.clear();
         expandedPaths.clear();
@@ -1368,13 +1434,12 @@ public class JEIPanel extends PluginPanel {
     }
 
     private long updateTradeLines(SearchItem item) {
-        paintGeBlock();
-        updatePriceNote();
-        ensureLimits();
-
         long geBuy = shownGeBuy();
         long nature = config.showPrices() && shownNature != null && !priceUnavailable ? shownNature.buyPrice() : -1;
         Alchemy.Result alchemy = Alchemy.compute(item.haPrice, geBuy, nature);
+        paintGeBlock(alchemy);
+        updatePriceNote();
+        ensureLimits();
         paintAlch(alchemy);
         return geBuy;
     }
@@ -1392,6 +1457,10 @@ public class JEIPanel extends PluginPanel {
         if (marketGrid != null) {
             marketGrid.setRows(Collections.emptyList());
         }
+        if (tradingSection != null) {
+            tradingContent.removeAll();
+            tradingSection.setVisible(false);
+        }
     }
 
     private void clearAlch() {
@@ -1407,7 +1476,7 @@ public class JEIPanel extends PluginPanel {
         return config.showPrices() && shownPrice != null && !priceUnavailable ? shownPrice.buyPrice() : -1;
     }
 
-    private void paintGeBlock() {
+    private void paintGeBlock(Alchemy.Result alchemy) {
         if (marketGrid == null) {
             return;
         }
@@ -1417,31 +1486,74 @@ public class JEIPanel extends PluginPanel {
         }
         if (!pricesFetched) {
             showPriceLoading();
+            if (tradingSection != null) {
+                tradingSection.setVisible(false);
+            }
             return;
         }
         List<StatGrid.Row> rows = new ArrayList<>();
+        List<StatGrid.Row> trading = new ArrayList<>();
         Color geColor = ironmanActive ? MUTED : GOLD;
-        if (!priceUnavailable) {
-            String geLine = TradeCopy.geLine(ironmanActive, true, shownPrice);
-            if (!geLine.isEmpty()) {
-                rows.add(new StatGrid.Row("", geLine, geColor));
-            }
+        String geLine = TradeCopy.geLine(ironmanActive, true, shownPrice);
+        if (!geLine.isEmpty()) {
+            rows.add(new StatGrid.Row("", geLine, geColor));
         }
         boolean ready = shownLimits != null && shownLimits.fetchedAt() > 0L;
         boolean limitsUnavailable = !ready && limitsHoldoff;
         Integer limit = ready && shownItem != null ? shownLimits.limit(shownItem.id) : null;
         int itemId = shownItem == null ? -1 : shownItem.id;
         MarketQuote quote = MarketQuote.describe(
-            ironmanActive, itemId, priceUnavailable ? PriceQuote.MISSING : shownPrice, limit, ready, limitsUnavailable);
-        String tip = ironmanActive
-            ? "Grand Exchange figures are a reference only."
-            : "Margin after the 2% GE tax, capped at 5m per item.";
+            ironmanActive, itemId, shownPrice, limit, ready, limitsUnavailable);
         for (MarketQuote.Line line : quote.lines) {
+            if ("Reference only".equals(line.value)) {
+                continue;
+            }
             StatGrid.Row row = new StatGrid.Row(line.key, line.value, marketColor(line));
-            rows.add(row);
+            if (isGuideLine(line)) {
+                rows.add(row);
+            } else {
+                trading.add(row);
+            }
+        }
+        if (alchemy != null && alchemy.profit != null) {
+            trading.add(new StatGrid.Row(
+                "Alch profit", profitText(alchemy.profit.longValue()), alchemy.profit >= 0 ? GOOD : BAD));
         }
         marketGrid.setRows(rows);
-        marketGrid.setToolTipText(quote.text.isEmpty() ? null : tip);
+        marketGrid.setToolTipText(ironmanActive
+            ? "Grand Exchange figures are a reference only."
+            : "Guide price and buy limit. Flipping figures are under Trading details.");
+        fillTrading(trading);
+    }
+
+    private static boolean isGuideLine(MarketQuote.Line line) {
+        if (line == null) {
+            return false;
+        }
+        return "Limit".equals(line.key) || "Buy limit".equals(line.key) || "Reference only".equals(line.value);
+    }
+
+    private static String profitText(long profit) {
+        if (profit >= 0) {
+            return String.format("+%,d gp", profit);
+        }
+        return String.format("%,d gp", profit);
+    }
+
+    private void fillTrading(List<StatGrid.Row> rows) {
+        if (tradingSection == null) {
+            return;
+        }
+        tradingContent.removeAll();
+        if (rows == null || rows.isEmpty()) {
+            tradingSection.setVisible(false);
+            return;
+        }
+        tradingSection.setTitle("Trading details");
+        StatGrid grid = new StatGrid(style);
+        grid.setRows(rows);
+        tradingContent.add(grid);
+        tradingSection.setVisible(true);
     }
 
     private Color marketColor(MarketQuote.Line line) {
@@ -1452,27 +1564,16 @@ public class JEIPanel extends PluginPanel {
     }
 
     private void paintAlch(Alchemy.Result alchemy) {
-        String alchLine = TradeCopy.alchLine(ironmanActive, alchemy);
-        if (alchLine.isEmpty() || alchemy == null) {
+        if (alchemy == null) {
             clearAlch();
             return;
         }
-        if (!ironmanActive && alchemy.profit != null) {
-            setWrap(lblHaAlch, String.format("High Alch: %,d gp", alchemy.haValue));
-            lblHaAlch.setForeground(NEUTRAL);
-            lblHaAlch.setVisible(true);
-            String profit = alchemy.profit >= 0
-                ? String.format("Profit: +%,d gp", alchemy.profit)
-                : String.format("Profit: %,d gp", alchemy.profit);
-            setWrap(lblAlchProfit, profit);
-            lblAlchProfit.setForeground(alchemy.profit >= 0 ? GOOD : BAD);
-            lblAlchProfit.setVisible(true);
-            return;
-        }
-        setWrap(lblHaAlch, alchLine);
+        setWrap(lblHaAlch, String.format("High Alch: %,d gp", alchemy.haValue));
         lblHaAlch.setForeground(ironmanActive ? GOLD : NEUTRAL);
         lblHaAlch.setVisible(true);
-        lblAlchProfit.setVisible(false);
+        if (lblAlchProfit != null) {
+            lblAlchProfit.setVisible(false);
+        }
     }
 
     private void updatePriceNote() {
@@ -1568,7 +1669,12 @@ public class JEIPanel extends PluginPanel {
     }
 
     private void updateMarket() {
-        paintGeBlock();
+        Alchemy.Result alchemy = null;
+        if (shownItem != null) {
+            long nature = config.showPrices() && shownNature != null && !priceUnavailable ? shownNature.buyPrice() : -1;
+            alchemy = Alchemy.compute(shownItem.haPrice, shownGeBuy(), nature);
+        }
+        paintGeBlock(alchemy);
     }
 
     /** One mapping fetch for the whole session. Skipped unless GE prices are on. */
@@ -1951,10 +2057,11 @@ public class JEIPanel extends PluginPanel {
         }
         for (ShopEntry shop : visible) {
             TradeCopy.ShopLine line = TradeCopy.shop(ironmanActive, shop, geBuy);
-            WrappingLabel row = htmlLine(SectionSummaries.shopHtml(shop, line), null, "small");
-            row.setToolTipText(SectionSummaries.shopPlain(shop, line));
-            row.setBorder(BorderFactory.createEmptyBorder(1, 0, 1, 0));
-            shopsContent.add(row);
+            String shopName = shop.shopName;
+            shopsContent.add(ShopRows.row(style, shop, line,
+                () -> openWiki(shopName),
+                () -> showOnMap(shopName)));
+            shopsContent.add(Box.createRigidArea(new Dimension(0, 4)));
         }
     }
 
@@ -2012,7 +2119,7 @@ public class JEIPanel extends PluginPanel {
             @Override
             public void collapseAll() {
                 expandedPaths.clear();
-                renderDetails();
+                refreshRecipeBody();
             }
 
             @Override
@@ -2039,7 +2146,7 @@ public class JEIPanel extends PluginPanel {
                 itemDetailsService.retry(itemName);
             }
         }
-        renderDetails();
+        refreshRecipeBody();
     }
 
     private void expandFullTree() {
@@ -2055,6 +2162,7 @@ public class JEIPanel extends PluginPanel {
         }
         treeFailed.clear();
         treeLoadInFlight = true;
+        showTreeLoading();
         Set<String> failed = new LinkedHashSet<>();
         scheduler.execute(() -> {
             BuildExpander.Result result = BuildExpander.expandAll(name, id, root, fetchingPages(failed));
@@ -2066,9 +2174,30 @@ public class JEIPanel extends PluginPanel {
                 treeFailed.addAll(failed);
                 expandedPaths.clear();
                 expandedPaths.addAll(result.expandedPaths);
-                renderDetails();
+                refreshRecipeBody();
             });
         });
+    }
+
+    private void showTreeLoading() {
+        if (recipeBody == null) {
+            return;
+        }
+        recipeBody.removeAll();
+        recipeBody.add(plainLabel("Loading build path\u2026", "small", MUTED));
+        recipeSection.setVisible(true);
+        recipeBody.revalidate();
+        recipeBody.repaint();
+    }
+
+    /** Rebuilds only the crafting section, not the rest of the detail pane. */
+    private void refreshRecipeBody() {
+        if (shownDetails == null || recipeSection == null) {
+            return;
+        }
+        populateRecipes(shownDetails.recipes);
+        recipeBody.revalidate();
+        recipeBody.repaint();
     }
 
     private void scheduleTreeLoads(List<String> names) {
@@ -2099,7 +2228,7 @@ public class JEIPanel extends PluginPanel {
                     return;
                 }
                 treeFailed.addAll(failed);
-                renderDetails();
+                refreshRecipeBody();
             });
         });
     }
@@ -2380,7 +2509,27 @@ public class JEIPanel extends PluginPanel {
         wiki.setForeground(LINK);
         wiki.addActionListener(e -> openWiki(monsterName));
         box.add(wiki);
+        JButton map = linkButton("Show on map", "small");
+        map.setForeground(LINK);
+        map.setToolTipText("Put this monster on the world map");
+        map.addActionListener(e -> showOnMap(monsterName));
+        box.add(map);
         return box;
+    }
+
+    private void showOnMap(String page) {
+        if (mapMarkers == null || page == null || page.isEmpty()) {
+            return;
+        }
+        mapMarkers.show(page, status -> {
+        });
+    }
+
+    /** Client thread, once per game tick. Finishes a world-map jump after the map opens. */
+    public void nudgeMap() {
+        if (mapMarkers != null && !closed) {
+            mapMarkers.nudge();
+        }
     }
 
     private static String monsterKey(String name) {
@@ -2407,17 +2556,34 @@ public class JEIPanel extends PluginPanel {
         loadItemDetail(prev, false);
     }
 
-    private JPanel buildHistoryBar() {
-        JPanel bar = new JPanel();
+    private JPanel buildIconStrip(String title, boolean favourites) {
+        JPanel bar = new JPanel() {
+            @Override
+            public Dimension getMaximumSize() {
+                Dimension preferred = getPreferredSize();
+                return new Dimension(Integer.MAX_VALUE, preferred.height);
+            }
+
+            @Override
+            public Dimension getMinimumSize() {
+                Dimension preferred = getPreferredSize();
+                return new Dimension(0, preferred.height);
+            }
+        };
         bar.setLayout(new BoxLayout(bar, BoxLayout.Y_AXIS));
         bar.setBackground(ColorScheme.DARK_GRAY_COLOR);
-        bar.setVisible(false);
-        JLabel label = plainLabel("Recent", "small", MUTED);
-        historyIcons = new JPanel(new WrapLayout(FlowLayout.LEFT, 2, 2));
-        historyIcons.setBackground(ColorScheme.DARK_GRAY_COLOR);
+        bar.setVisible(favourites);
+        bar.setAlignmentX(LEFT_ALIGNMENT);
+        JLabel label = plainLabel(title, "small", MUTED);
+        IconGridPanel icons = new IconGridPanel(32, 4);
+        icons.setBackground(ColorScheme.DARK_GRAY_COLOR);
+        bar.putClientProperty("icons", icons);
         bar.add(Box.createRigidArea(new Dimension(0, 3)));
         bar.add(label);
-        bar.add(historyIcons);
+        bar.add(icons);
+        if (favourites) {
+            favouriteIcons = icons;
+        }
         return bar;
     }
 
@@ -2448,6 +2614,28 @@ public class JEIPanel extends PluginPanel {
         historyPanel.setVisible(any);
         historyPanel.revalidate();
         historyPanel.repaint();
+        rebuildFavourites();
+    }
+
+    private void rebuildFavourites() {
+        if (favouriteIcons == null || favouritesPanel == null) {
+            return;
+        }
+        favouriteIcons.removeAll();
+        boolean any = false;
+        synchronized (favouritesLock) {
+            for (int id : favouriteIds) {
+                SearchItem item = idIndex.get(id);
+                if (item == null) {
+                    continue;
+                }
+                any = true;
+                favouriteIcons.add(buildHistoryCell(item));
+            }
+        }
+        favouritesPanel.setVisible(any);
+        favouritesPanel.revalidate();
+        favouritesPanel.repaint();
     }
 
     private JPanel buildHistoryCell(SearchItem item) {
@@ -2525,6 +2713,7 @@ public class JEIPanel extends PluginPanel {
         updateStarButton(item);
         saveFavourites();
         refreshFavouriteMarkers();
+        rebuildFavourites();
         if (favToggle != null && favToggle.isSelected()) {
             lastGridItems = buildFavouritesList();
             populateGrid(lastGridItems);
@@ -2532,13 +2721,9 @@ public class JEIPanel extends PluginPanel {
     }
 
     private void updateStarButton(SearchItem item) {
-        if (isFavourite(item.id)) {
-            starButton.setText("\u2605");
-            starButton.setToolTipText("Remove from favourites");
-        } else {
-            starButton.setText("\u2606");
-            starButton.setToolTipText("Add to favourites");
-        }
+        boolean favourite = isFavourite(item.id);
+        starButton.setSelected(favourite);
+        starButton.setToolTipText(favourite ? "Remove from favourites" : "Add to favourites");
     }
 
     private boolean isFavourite(int id) {

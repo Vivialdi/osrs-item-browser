@@ -30,9 +30,9 @@ public final class SectionSummaries {
         }
         String price = formatPrice(cheapest);
         if (count == 1) {
-            return title + " \u2014 " + price;
+            return title + " \u00b7 " + price;
         }
-        return title + " \u2014 cheapest " + price;
+        return title + " \u00b7 cheapest " + price;
     }
 
     public static String drops(List<DropEntry> drops) {
@@ -47,9 +47,9 @@ public final class SectionSummaries {
             ? ""
             : rate.display;
         if (rateText.isEmpty()) {
-            return title + " \u2014 " + best.getSource();
+            return title + " \u00b7 " + best.getSource();
         }
-        return title + " \u2014 " + best.getSource() + " " + rateText;
+        return title + " \u00b7 " + best.getSource() + " " + rateText;
     }
 
     public static String uses(List<String> names) {
@@ -58,7 +58,7 @@ public final class SectionSummaries {
             return "Used to craft";
         }
         if (count == 1 && names.get(0) != null && !names.get(0).isEmpty()) {
-            return "Used to craft (1) \u2014 " + names.get(0);
+            return "Used to craft (1) \u00b7 " + names.get(0);
         }
         return "Used to craft (" + count + ")";
     }
@@ -73,7 +73,7 @@ public final class SectionSummaries {
         if (skill.isEmpty()) {
             return title;
         }
-        return title + " \u2014 " + skill;
+        return title + " \u00b7 " + skill;
     }
 
     public static String equipment(String slot, boolean twoHanded) {
@@ -85,7 +85,7 @@ public final class SectionSummaries {
         if (twoHanded && !lower.contains("2h") && !lower.contains("two")) {
             pretty = pretty + ", two-handed";
         }
-        return "Equipment \u2014 " + pretty;
+        return "Equipment \u00b7 " + pretty;
     }
 
     public static String locations(List<String> places) {
@@ -104,7 +104,7 @@ public final class SectionSummaries {
         if (first.isEmpty()) {
             return title;
         }
-        return title + " \u2014 " + first;
+        return title + " \u00b7 " + first;
     }
 
     public static String shopPlain(ShopEntry shop, TradeCopy.ShopLine line) {

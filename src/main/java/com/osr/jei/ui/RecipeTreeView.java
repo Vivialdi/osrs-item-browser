@@ -242,9 +242,6 @@ public final class RecipeTreeView {
             text = text + " (loop)";
         }
         Color nameColor = unmet ? UNMET : (open ? LINK : ColorScheme.LIGHT_GRAY_COLOR);
-        EllipsisLabel name = new EllipsisLabel();
-        style.apply(name, "small");
-        name.setAlignmentX(0f);
         String suffix = "";
         Color suffixColor = nameColor;
         if (counts != null && counts.show() && counts.inventoryKnown()) {
@@ -254,7 +251,31 @@ public final class RecipeTreeView {
                 suffixColor = OwnedText.haveNeedColor(have.longValue(), node.quantity, counts.bankKnown());
             }
         }
-        name.setPieces(text, nameColor, suffix, suffixColor);
+        JPanel lines = new JPanel() {
+            @Override
+            public Dimension getMaximumSize() {
+                Dimension preferred = getPreferredSize();
+                return new Dimension(Integer.MAX_VALUE, preferred.height);
+            }
+
+            @Override
+            public Dimension getMinimumSize() {
+                Dimension preferred = getPreferredSize();
+                return new Dimension(0, preferred.height);
+            }
+        };
+        lines.setLayout(new BoxLayout(lines, BoxLayout.Y_AXIS));
+        lines.setOpaque(false);
+        lines.setAlignmentX(0f);
+        WrappingLabel name = html(style, escape(text), "small", nameColor);
+        name.setToolTipText(suffix.isEmpty() ? text : text + " \u00b7 " + suffix);
+        lines.add(name);
+        WrappingLabel have = null;
+        if (!suffix.isEmpty()) {
+            have = html(style, escape(suffix), "small", suffixColor);
+            have.setToolTipText(name.getToolTipText());
+            lines.add(have);
+        }
         if (open) {
             String itemName = node.name;
             MouseAdapter opener = new MouseAdapter() {
@@ -267,12 +288,28 @@ public final class RecipeTreeView {
             icon.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
             name.addMouseListener(opener);
             icon.addMouseListener(opener);
+            if (have != null) {
+                have.setCursor(name.getCursor());
+                have.addMouseListener(opener);
+            }
         }
-        JPanel center = new JPanel(new BorderLayout(4, 0));
+        JPanel center = new JPanel(new BorderLayout(4, 0)) {
+            @Override
+            public Dimension getMaximumSize() {
+                Dimension preferred = getPreferredSize();
+                return new Dimension(Integer.MAX_VALUE, preferred.height);
+            }
+
+            @Override
+            public Dimension getMinimumSize() {
+                Dimension preferred = getPreferredSize();
+                return new Dimension(0, preferred.height);
+            }
+        };
         center.setOpaque(false);
         center.setAlignmentX(0f);
         center.add(icon, BorderLayout.WEST);
-        center.add(name, BorderLayout.CENTER);
+        center.add(lines, BorderLayout.CENTER);
         row.add(center, BorderLayout.CENTER);
         return row;
     }
