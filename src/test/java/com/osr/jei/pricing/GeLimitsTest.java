@@ -112,5 +112,10 @@ public class GeLimitsTest {
 
         MarketQuote unlisted = MarketQuote.describe(true, ItemID.NATURERUNE, PriceQuote.MISSING, null, true);
         assertEquals("Reference only \u00b7 buy limit not listed", unlisted.text);
+
+        MarketQuote unavailable = MarketQuote.describe(false, ItemID.NATURERUNE, quote, null, false, true);
+        assertEquals(
+            "Instant sell: 1,100 gp \u00b7 margin 78 gp after tax \u00b7 buy limits unavailable",
+            unavailable.text);
     }
 }

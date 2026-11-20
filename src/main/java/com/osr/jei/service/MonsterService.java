@@ -1,8 +1,8 @@
 package com.osr.jei.service;
 
 import com.osr.jei.model.MonsterInfo;
-import com.osr.jei.wiki.BoundedCache;
 import com.osr.jei.wiki.MonsterParser;
+import com.osr.jei.wiki.TtlCache;
 import com.osr.jei.wiki.RequestCancelledException;
 import com.osr.jei.wiki.WikiPages;
 import lombok.extern.slf4j.Slf4j;
@@ -14,13 +14,15 @@ import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 
-/** One parse per monster page, cached after a successful read. */
+/** One parse per monster page, cached after a successful read for {@link WikiPages#TTL_MS}. */
 @Slf4j
 @Singleton
 public class MonsterService {
 
+    static final int CACHE_SIZE = 64;
+
     private final WikiPages pages;
-    private final BoundedCache<String, Optional<MonsterInfo>> cache = new BoundedCache<>(64);
+    private final TtlCache<String, Optional<MonsterInfo>> cache = new TtlCache<>(CACHE_SIZE, WikiPages.TTL_MS);
 
     @Inject
     public MonsterService(WikiPages pages) {
@@ -32,7 +34,7 @@ public class MonsterService {
             return CompletableFuture.completedFuture(Optional.empty());
         }
         String key = monsterName.toLowerCase(Locale.ROOT);
-        Optional<MonsterInfo> cached = cache.get(key);
+        Optional<MonsterInfo> cached = cache.get(key, System.currentTimeMillis());
         if (cached != null) {
             return CompletableFuture.completedFuture(cached);
         }
@@ -48,8 +50,17 @@ public class MonsterService {
             Optional<MonsterInfo> info = page.missing
                 ? Optional.empty()
                 : MonsterParser.parse(monsterName, page.wikitext);
-            cache.put(key, info);
+            cache.put(key, info, System.currentTimeMillis());
             return info;
         });
+    }
+
+    /** Drops a parsed monster and its failure holdoff so the next load can fetch it. */
+    public void retry(String monsterName) {
+        if (monsterName == null || monsterName.isEmpty()) {
+            return;
+        }
+        cache.remove(monsterName.toLowerCase(Locale.ROOT));
+        pages.allowRetry(monsterName);
     }
 }

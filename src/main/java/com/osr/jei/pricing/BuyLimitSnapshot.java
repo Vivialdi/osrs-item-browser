@@ -27,6 +27,10 @@ public final class BuyLimitSnapshot {
         return new BuyLimitSnapshot(0L, Collections.emptyMap());
     }
 
+    public long fetchedAt() {
+        return fetchedAt;
+    }
+
     public boolean fresh(long nowMs) {
         return fetchedAt > 0L && nowMs - fetchedAt < TTL_MS;
     }

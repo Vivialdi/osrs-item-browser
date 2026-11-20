@@ -25,8 +25,12 @@ import com.osr.jei.owned.OwnedItems;
 import com.osr.jei.owned.OwnedText;
 import com.osr.jei.pricing.Alchemy;
 import com.osr.jei.pricing.BuyLimitSnapshot;
+import com.osr.jei.pricing.LimitResult;
 import com.osr.jei.pricing.MarketQuote;
+import com.osr.jei.pricing.PriceAge;
+import com.osr.jei.pricing.PriceLookup;
 import com.osr.jei.pricing.PriceQuote;
+import com.osr.jei.wiki.WikiFailures;
 import com.osr.jei.search.ItemSearch;
 import com.osr.jei.search.ItemTraits;
 import com.osr.jei.search.SearchCriteria;
@@ -233,6 +237,15 @@ public class JEIPanel extends PluginPanel {
     private OwnedItems.Snapshot ownedSnapshot = OwnedItems.Snapshot.NONE;
     private BuyLimitSnapshot shownLimits;
     private boolean limitLoadInFlight;
+    private boolean limitsHoldoff;
+    private JPanel notesBox;
+    private JButton pageRetry;
+    private JButton priceRetry;
+    private WrappingLabel lblPriceNote;
+    private String detailProblem;
+    private boolean priceUnavailable;
+    private boolean priceStale;
+    private long priceFetchedAt;
     private List<SearchItem> lastGridItems = Collections.emptyList();
 
     public JEIPanel() {
@@ -738,8 +751,19 @@ public class JEIPanel extends PluginPanel {
         style.apply(lblMarket, "small");
         lblMarket.setForeground(NEUTRAL);
         lblMarket.setVisible(false);
+        lblPriceNote = new WrappingLabel();
+        style.apply(lblPriceNote, "small");
+        lblPriceNote.setForeground(MUTED);
+        lblPriceNote.setVisible(false);
+        priceRetry = linkButton("Retry prices", "small");
+        priceRetry.setForeground(LINK);
+        priceRetry.setToolTipText("Load Grand Exchange prices and buy limits again.");
+        priceRetry.setVisible(false);
+        priceRetry.addActionListener(e -> retryPrices());
         marketBox = verticalBox();
         marketBox.add(lblPrice);
+        marketBox.add(lblPriceNote);
+        marketBox.add(priceRetry);
         marketBox.add(lblMarket);
         lblHaAlch = plainLabel(" ", "body", GOOD);
 
@@ -771,6 +795,14 @@ public class JEIPanel extends PluginPanel {
         wikiButton.addActionListener(e -> openWiki(selectedItemName));
         wikiButton.setVisible(false);
 
+        notesBox = verticalBox();
+        notesBox.setVisible(false);
+        pageRetry = linkButton("Retry wiki page", "small");
+        pageRetry.setForeground(LINK);
+        pageRetry.setToolTipText("Ask the OSRS Wiki for this page again.");
+        pageRetry.setVisible(false);
+        pageRetry.addActionListener(e -> retryWikiPage());
+
         applySectionOrder();
         return detailPanel;
     }
@@ -791,6 +823,8 @@ public class JEIPanel extends PluginPanel {
             detailPanel.add(sectionComponent(section));
             detailPanel.add(Box.createRigidArea(new Dimension(0, 4)));
         }
+        detailPanel.add(notesBox);
+        detailPanel.add(pageRetry);
         detailPanel.add(wikiButton);
         detailPanel.revalidate();
         detailPanel.repaint();
@@ -928,6 +962,19 @@ public class JEIPanel extends PluginPanel {
     private void populateGrid(List<SearchItem> items) {
         gridPanel.removeAll();
         selectedCell = null;
+        if (items.isEmpty()) {
+            String text;
+            if (!indexPopulated) {
+                text = "The item list is still loading.";
+            } else if (favToggle != null && favToggle.isSelected()) {
+                text = "No favourites yet.";
+            } else {
+                text = "No items match that search.";
+            }
+            JLabel empty = plainLabel(text, "small", MUTED);
+            empty.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
+            gridPanel.add(empty);
+        }
         for (SearchItem item : items) {
             gridPanel.add(buildItemCell(item));
         }
@@ -1046,39 +1093,114 @@ public class JEIPanel extends PluginPanel {
         // Prices are a separate bulk snapshot, and only when the setting is on.
         boolean fetchPrices = TradeCopy.shouldFetchGePrices(config.showPrices());
         CompletableFuture<ItemDetails> detailsFuture = itemDetailsService.load(item.name);
-        CompletableFuture<PriceQuote> priceFuture = fetchPrices
-            ? priceService.getQuote(item.id).exceptionally(error -> priceFallback(error))
-            : CompletableFuture.completedFuture(PriceQuote.MISSING);
-        CompletableFuture<PriceQuote> natureFuture = fetchPrices
-            ? priceService.getQuote(ItemID.NATURERUNE).exceptionally(error -> priceFallback(error))
-            : CompletableFuture.completedFuture(PriceQuote.MISSING);
-        CompletableFuture.allOf(detailsFuture, priceFuture, natureFuture).whenComplete((ignored, error) ->
+        CompletableFuture<PriceLookup> priceFuture = fetchPrices
+            ? priceService.lookup(item.id)
+            : CompletableFuture.completedFuture(PriceLookup.HIDDEN);
+        CompletableFuture<PriceLookup> natureFuture = fetchPrices
+            ? priceService.lookup(ItemID.NATURERUNE)
+            : CompletableFuture.completedFuture(PriceLookup.HIDDEN);
+        detailsFuture.whenComplete((details, error) -> SwingUtilities.invokeLater(() -> {
+            if (gen != detailGeneration.get() || closed) {
+                return;
+            }
+            if (error != null) {
+                if (unwrap(error) instanceof RequestCancelledException) {
+                    return;
+                }
+                log.debug("[JEI] Failed to load '{}': {}", item.name, unwrap(error).getMessage());
+                detailProblem = WikiFailures.page(unwrap(error));
+                shownDetails = null;
+            } else {
+                detailProblem = null;
+                shownDetails = details == null ? ItemDetails.EMPTY : details;
+            }
+            shownItem = item;
+            renderDetails();
+        }));
+        CompletableFuture.allOf(priceFuture, natureFuture).whenComplete((ignored, error) ->
             SwingUtilities.invokeLater(() -> {
-                if (gen != detailGeneration.get()) {
+                if (gen != detailGeneration.get() || closed) {
                     return;
                 }
-                if (error != null) {
-                    if (unwrap(error) instanceof RequestCancelledException) {
-                        return;
-                    }
-                    log.debug("[JEI] Failed to load '{}': {}", item.name, unwrap(error).getMessage());
-                    lblPrice.setText("Error loading data");
+                if (error != null && unwrap(error) instanceof RequestCancelledException) {
                     return;
                 }
-                shownItem = item;
-                shownDetails = detailsFuture.getNow(ItemDetails.EMPTY);
-                shownPrice = priceFuture.getNow(PriceQuote.MISSING);
-                shownNature = natureFuture.getNow(PriceQuote.MISSING);
-                pricesFetched = fetchPrices;
-                renderDetails();
+                acceptPrices(fetchPrices, priceFuture, natureFuture, error);
+                if (shownItem == item) {
+                    renderDetails();
+                }
             }));
     }
 
-    private static PriceQuote priceFallback(Throwable error) {
-        if (unwrap(error) instanceof RequestCancelledException) {
-            throw new CompletionException(unwrap(error));
+    private void acceptPrices(
+        boolean fetchPrices,
+        CompletableFuture<PriceLookup> priceFuture,
+        CompletableFuture<PriceLookup> natureFuture,
+        Throwable error
+    ) {
+        pricesFetched = fetchPrices;
+        if (!fetchPrices) {
+            shownPrice = PriceQuote.MISSING;
+            shownNature = PriceQuote.MISSING;
+            priceUnavailable = false;
+            priceStale = false;
+            priceFetchedAt = 0L;
+            return;
         }
-        return PriceQuote.MISSING;
+        if (error != null) {
+            shownPrice = PriceQuote.MISSING;
+            shownNature = PriceQuote.MISSING;
+            priceUnavailable = true;
+            priceStale = false;
+            priceFetchedAt = 0L;
+            return;
+        }
+        PriceLookup price = priceFuture.getNow(PriceLookup.UNAVAILABLE);
+        PriceLookup nature = natureFuture.getNow(PriceLookup.UNAVAILABLE);
+        shownPrice = price.quote == null ? PriceQuote.MISSING : price.quote;
+        shownNature = nature.quote == null ? PriceQuote.MISSING : nature.quote;
+        priceUnavailable = price.unavailable;
+        priceStale = price.stale;
+        priceFetchedAt = price.fetchedAtMs;
+    }
+
+    private void retryWikiPage() {
+        if (shownItem == null || itemDetailsService == null) {
+            return;
+        }
+        itemDetailsService.retry(shownItem.name);
+        loadItemDetail(shownItem, false);
+    }
+
+    private void retryPrices() {
+        if (shownItem == null || priceService == null || !config.showPrices()) {
+            return;
+        }
+        priceService.allowRetry();
+        if (buyLimitService != null) {
+            buyLimitService.allowRetry();
+        }
+        limitsHoldoff = false;
+        int gen = detailGeneration.get();
+        SearchItem item = shownItem;
+        if (priceRetry != null) {
+            priceRetry.setVisible(false);
+        }
+        lblPrice.setText("Loading prices\u2026");
+        CompletableFuture<PriceLookup> priceFuture = priceService.lookup(item.id);
+        CompletableFuture<PriceLookup> natureFuture = priceService.lookup(ItemID.NATURERUNE);
+        CompletableFuture.allOf(priceFuture, natureFuture).whenComplete((ignored, error) ->
+            SwingUtilities.invokeLater(() -> {
+                if (gen != detailGeneration.get() || closed) {
+                    return;
+                }
+                if (error != null && unwrap(error) instanceof RequestCancelledException) {
+                    return;
+                }
+                acceptPrices(true, priceFuture, natureFuture, error);
+                ensureLimits();
+                renderDetails();
+            }));
     }
 
     private static Throwable unwrap(Throwable error) {
@@ -1099,17 +1221,31 @@ public class JEIPanel extends PluginPanel {
         lblPrice.setForeground(ironmanActive ? MUTED : GOLD);
         lblPrice.setText(config.showPrices() ? "Loading..." : " ");
         shownDetails = null;
+        detailProblem = null;
         shownPrice = PriceQuote.MISSING;
+        shownNature = PriceQuote.MISSING;
         pricesFetched = false;
+        priceUnavailable = false;
+        priceStale = false;
+        priceFetchedAt = 0L;
+        if (lblPriceNote != null) {
+            lblPriceNote.setVisible(false);
+        }
+        if (priceRetry != null) {
+            priceRetry.setVisible(false);
+        }
+        if (notesBox != null) {
+            notesBox.removeAll();
+            notesBox.setVisible(false);
+        }
+        if (pageRetry != null) {
+            pageRetry.setVisible(false);
+        }
         updateMarket();
         ensureLimits();
         updateOwnedHeader();
         lblHaAlch.setText(" ");
-        equipmentSection.setVisible(false);
-        shopsSection.setVisible(false);
-        recipeSection.setVisible(false);
-        usedInButton.setVisible(false);
-        dropsButton.setVisible(false);
+        hideDetailSections();
         wikiButton.setVisible(true);
         showGridCard();
         detailPanel.revalidate();
@@ -1117,33 +1253,91 @@ public class JEIPanel extends PluginPanel {
     }
 
     private void renderDetails() {
-        if (shownItem == null || shownDetails == null) {
+        if (shownItem == null) {
+            return;
+        }
+        if (detailProblem != null) {
+            renderProblem();
+            return;
+        }
+        if (shownDetails == null) {
             return;
         }
         SearchItem item = shownItem;
         ItemDetails details = shownDetails;
+        paintItemHeader(item, details.weight);
+        long geBuy = updateTradeLines(item);
+        if (details.missing) {
+            hideDetailSections();
+            fillEmptyNotes(details);
+            if (pageRetry != null) {
+                pageRetry.setVisible(true);
+            }
+            detailPanel.revalidate();
+            detailPanel.repaint();
+            return;
+        }
+        if (pageRetry != null) {
+            pageRetry.setVisible(false);
+        }
+        syncQuestWatch();
+        populateEquipment(details.stats, details.weight, details.requirements);
+        populateShops(details.shops, geBuy);
+        populateRecipes(details.recipes);
+        populateUsedIn(details.products);
+        populateDrops(details.drops);
+        fillEmptyNotes(details);
+        detailPanel.revalidate();
+        detailPanel.repaint();
+    }
+
+    private void renderProblem() {
+        SearchItem item = shownItem;
+        paintItemHeader(item, Double.NaN);
+        updateTradeLines(item);
+        hideDetailSections();
+        if (notesBox != null) {
+            notesBox.removeAll();
+            notesBox.add(noteLabel(detailProblem));
+            notesBox.setVisible(true);
+        }
+        if (pageRetry != null) {
+            pageRetry.setVisible(true);
+        }
+        wikiButton.setVisible(true);
+        detailPanel.revalidate();
+        detailPanel.repaint();
+    }
+
+    private void paintItemHeader(SearchItem item, double weight) {
         ((WrappingLabel) lblName).setHtml(escape(item.name));
         updateStarButton(item);
         starButton.setVisible(true);
         wikiButton.setVisible(true);
-
         String members = item.members ? "Members" : "F2P";
-        String weight = "";
-        if (!Double.isNaN(details.weight)) {
-            weight = details.weight == 0.0 ? "  \u00b7  0 kg" : String.format("  \u00b7  %.3g kg", details.weight);
+        String weightText = "";
+        if (!Double.isNaN(weight)) {
+            weightText = weight == 0.0 ? "  \u00b7  0 kg" : String.format("  \u00b7  %.3g kg", weight);
         }
-        lblMembersWeight.setText(members + weight);
+        lblMembersWeight.setText(members + weightText);
         updateIronmanBadge();
+        updateOwnedHeader();
+    }
 
-        String geLine = TradeCopy.geLine(ironmanActive, config.showPrices(), shownPrice);
-        lblPrice.setText(geLine.isEmpty() ? " " : geLine);
+    private long updateTradeLines(SearchItem item) {
+        String geLine = priceUnavailable ? "" : TradeCopy.geLine(ironmanActive, config.showPrices(), shownPrice);
+        if (!pricesFetched && config.showPrices() && !priceUnavailable) {
+            lblPrice.setText("Loading prices\u2026");
+        } else {
+            lblPrice.setText(geLine.isEmpty() ? " " : geLine);
+        }
         lblPrice.setForeground(ironmanActive ? MUTED : GOLD);
+        updatePriceNote();
         updateMarket();
         ensureLimits();
-        updateOwnedHeader();
 
-        long geBuy = config.showPrices() && shownPrice != null ? shownPrice.buyPrice() : -1;
-        long nature = config.showPrices() && shownNature != null ? shownNature.buyPrice() : -1;
+        long geBuy = config.showPrices() && shownPrice != null && !priceUnavailable ? shownPrice.buyPrice() : -1;
+        long nature = config.showPrices() && shownNature != null && !priceUnavailable ? shownNature.buyPrice() : -1;
         Alchemy.Result alchemy = Alchemy.compute(item.haPrice, geBuy, nature);
         String alchLine = TradeCopy.alchLine(ironmanActive, alchemy);
         if (alchLine.isEmpty()) {
@@ -1156,15 +1350,81 @@ public class JEIPanel extends PluginPanel {
                 lblHaAlch.setForeground(ironmanActive ? GOLD : NEUTRAL);
             }
         }
+        return geBuy;
+    }
 
-        syncQuestWatch();
-        populateEquipment(details.stats, details.weight, details.requirements);
-        populateShops(details.shops, geBuy);
-        populateRecipes(details.recipes);
-        populateUsedIn(details.products);
-        populateDrops(details.drops);
-        detailPanel.revalidate();
-        detailPanel.repaint();
+    private void updatePriceNote() {
+        if (lblPriceNote == null) {
+            return;
+        }
+        String note = "";
+        if (config.showPrices() && pricesFetched && priceUnavailable) {
+            note = PriceAge.UNAVAILABLE;
+        } else if (config.showPrices() && pricesFetched && shownPrice != null && shownPrice.known()) {
+            String age = PriceAge.suffix(shownPrice, priceFetchedAt, System.currentTimeMillis());
+            if (!age.isEmpty()) {
+                note = "Price data is " + age + ".";
+            }
+        }
+        if (note.isEmpty()) {
+            lblPriceNote.setVisible(false);
+        } else {
+            lblPriceNote.setHtml(escape(note));
+            lblPriceNote.setForeground(priceUnavailable ? BAD : MUTED);
+            lblPriceNote.setVisible(true);
+            lblPriceNote.setToolTipText(priceStale
+                ? "Could not refresh Grand Exchange prices. Showing the last saved snapshot."
+                : "Age of the wiki's latest trade for this item, or of the saved price snapshot.");
+        }
+        if (priceRetry != null) {
+            boolean limitsNeedRetry = limitsHoldoff
+                && (shownLimits == null || !shownLimits.fresh(System.currentTimeMillis()));
+            priceRetry.setVisible(config.showPrices() && pricesFetched
+                && (priceUnavailable || priceStale || limitsNeedRetry));
+        }
+    }
+
+    private void hideDetailSections() {
+        equipmentSection.setVisible(false);
+        shopsSection.setVisible(false);
+        recipeSection.setVisible(false);
+        usedInButton.setVisible(false);
+        dropsButton.setVisible(false);
+    }
+
+    private void fillEmptyNotes(ItemDetails details) {
+        if (notesBox == null) {
+            return;
+        }
+        notesBox.removeAll();
+        if (details != null && details.missing) {
+            notesBox.add(noteLabel("The OSRS Wiki has no page for this item."));
+            notesBox.setVisible(true);
+            return;
+        }
+        if (details == null) {
+            notesBox.setVisible(false);
+            return;
+        }
+        if (details.recipes == null || details.recipes.isEmpty()) {
+            notesBox.add(noteLabel("No recipes listed for this item."));
+        }
+        if (visibleShops(details.shops).isEmpty()) {
+            notesBox.add(noteLabel("No shops sell this item."));
+        }
+        if (config.showDropSources() && (details.drops == null || details.drops.isEmpty())) {
+            notesBox.add(noteLabel("No drop sources listed."));
+        }
+        if (knownProducts(details.products).isEmpty()) {
+            notesBox.add(noteLabel("No uses listed."));
+        }
+        notesBox.setVisible(notesBox.getComponentCount() > 0);
+    }
+
+    private WrappingLabel noteLabel(String text) {
+        WrappingLabel line = htmlLine(escape(text), null, "small");
+        line.setForeground(MUTED);
+        return line;
     }
 
     private void updateOwnedHeader() {
@@ -1189,14 +1449,16 @@ public class JEIPanel extends PluginPanel {
         if (lblMarket == null) {
             return;
         }
-        if (!config.showPrices() || !pricesFetched || shownItem == null) {
+        if (!config.showPrices() || !pricesFetched || shownItem == null || priceUnavailable) {
             lblMarket.setText(" ");
             lblMarket.setVisible(false);
             return;
         }
-        boolean ready = shownLimits != null && shownLimits.fresh(System.currentTimeMillis());
+        boolean ready = shownLimits != null && shownLimits.fetchedAt() > 0L;
+        boolean limitsUnavailable = !ready && limitsHoldoff;
         Integer limit = ready ? shownLimits.limit(shownItem.id) : null;
-        MarketQuote quote = MarketQuote.describe(ironmanActive, shownItem.id, shownPrice, limit, ready);
+        MarketQuote quote = MarketQuote.describe(
+            ironmanActive, shownItem.id, shownPrice, limit, ready, limitsUnavailable);
         if (quote.text.isEmpty()) {
             lblMarket.setVisible(false);
             return;
@@ -1226,23 +1488,35 @@ public class JEIPanel extends PluginPanel {
         if (shownLimits != null && shownLimits.fresh(System.currentTimeMillis())) {
             return;
         }
-        if (limitLoadInFlight) {
+        if (limitLoadInFlight || limitsHoldoff) {
             return;
         }
         limitLoadInFlight = true;
-        buyLimitService.load().whenComplete((snap, error) -> SwingUtilities.invokeLater(() -> {
+        buyLimitService.load().whenComplete((result, error) -> SwingUtilities.invokeLater(() -> {
             limitLoadInFlight = false;
             if (closed) {
                 return;
             }
-            if (snap != null && snap.fresh(System.currentTimeMillis())) {
-                shownLimits = snap;
-                if (pricesFetched) {
+            if (error != null) {
+                if (!(unwrap(error) instanceof RequestCancelledException)) {
+                    limitsHoldoff = true;
+                    updatePriceNote();
                     updateMarket();
-                    if (detailPanel != null) {
-                        detailPanel.revalidate();
-                        detailPanel.repaint();
-                    }
+                }
+                return;
+            }
+            LimitResult loaded = result == null ? new LimitResult(null, true) : result;
+            if (loaded.snapshot != null && loaded.snapshot.fetchedAt() > 0L) {
+                shownLimits = loaded.snapshot;
+            }
+            limitsHoldoff = loaded.failed
+                && (shownLimits == null || !shownLimits.fresh(System.currentTimeMillis()));
+            if (pricesFetched) {
+                updatePriceNote();
+                updateMarket();
+                if (detailPanel != null) {
+                    detailPanel.revalidate();
+                    detailPanel.repaint();
                 }
             }
         }));
@@ -1396,6 +1670,8 @@ public class JEIPanel extends PluginPanel {
         }
         boolean waiting = false;
         boolean blocked = false;
+        boolean failedLoad = false;
+        List<String> failedNames = new ArrayList<>();
         for (int id : needed) {
             String name = nameForWorn(id);
             if (name == null) {
@@ -1411,6 +1687,8 @@ public class JEIPanel extends PluginPanel {
             }
             if (compareFailed.contains(wornKey(name))) {
                 blocked = true;
+                failedLoad = true;
+                failedNames.add(name);
                 continue;
             }
             waiting = true;
@@ -1427,7 +1705,16 @@ public class JEIPanel extends PluginPanel {
             }
         }
         if (blocked) {
-            equipmentContent.add(plainLabel("Worn stats are unavailable for something you have equipped.", "small", MUTED));
+            if (failedLoad) {
+                equipmentContent.add(plainLabel("Worn stats could not be loaded from the wiki.", "small", MUTED));
+                JButton retry = linkButton("Retry worn stats", "small");
+                retry.setForeground(LINK);
+                retry.addActionListener(e -> retryWornStats(failedNames));
+                equipmentContent.add(retry);
+            } else {
+                equipmentContent.add(plainLabel(
+                    "Worn stats are not listed for something you have equipped.", "small", MUTED));
+            }
             return;
         }
         if (waiting) {
@@ -1520,17 +1807,47 @@ public class JEIPanel extends PluginPanel {
         return recipe -> progress.recipe(recipe, judge);
     }
 
-    private void populateShops(List<ShopEntry> shops, long geBuy) {
-        shopsContent.removeAll();
+    private void retryWornStats(List<String> names) {
+        for (String name : names) {
+            compareFailed.remove(wornKey(name));
+            compareStarted.remove(wornKey(name));
+            itemDetailsService.retry(name);
+        }
+        if (shownDetails != null) {
+            renderDetails();
+        }
+    }
+
+    private List<ShopEntry> visibleShops(List<ShopEntry> shops) {
         List<ShopEntry> visible = new ArrayList<>();
-        if (shops != null) {
-            for (ShopEntry shop : shops) {
-                if (!shop.sells || shop.permanentlyOutOfStock()) {
-                    continue;
-                }
-                visible.add(shop);
+        if (shops == null) {
+            return visible;
+        }
+        for (ShopEntry shop : shops) {
+            if (!shop.sells || shop.permanentlyOutOfStock()) {
+                continue;
+            }
+            visible.add(shop);
+        }
+        return visible;
+    }
+
+    private List<String> knownProducts(List<String> products) {
+        List<String> known = new ArrayList<>();
+        if (products == null) {
+            return known;
+        }
+        for (String name : products) {
+            if (findByName(name) != null) {
+                known.add(name);
             }
         }
+        return known;
+    }
+
+    private void populateShops(List<ShopEntry> shops, long geBuy) {
+        shopsContent.removeAll();
+        List<ShopEntry> visible = visibleShops(shops);
         if (visible.isEmpty()) {
             shopsSection.setVisible(false);
             return;
@@ -1558,6 +1875,10 @@ public class JEIPanel extends PluginPanel {
         recipeSection.setVisible(true);
         if (!tree.pending.isEmpty()) {
             scheduleTreeLoads(tree.pending);
+        }
+        if (!treeFailed.isEmpty()) {
+            recipeBody.add(noteLabel(
+                "Some build-path pages could not be loaded. Open those ingredients again to retry."));
         }
     }
 
@@ -1612,7 +1933,9 @@ public class JEIPanel extends PluginPanel {
             expandedPaths.removeIf(existing -> existing.equals(path) || existing.startsWith(prefix));
         } else {
             expandedPaths.add(path);
-            treeFailed.remove(treeKey(itemName));
+            if (treeFailed.remove(treeKey(itemName))) {
+                itemDetailsService.retry(itemName);
+            }
         }
         renderDetails();
     }
@@ -1625,6 +1948,9 @@ public class JEIPanel extends PluginPanel {
         String name = shownItem.name;
         Integer id = shownItem.id;
         ItemDetails root = shownDetails;
+        for (String key : new ArrayList<>(treeFailed)) {
+            itemDetailsService.retry(key);
+        }
         treeFailed.clear();
         treeLoadInFlight = true;
         Set<String> failed = new LinkedHashSet<>();
@@ -1740,14 +2066,7 @@ public class JEIPanel extends PluginPanel {
     }
 
     private void populateUsedIn(List<String> products) {
-        List<String> known = new ArrayList<>();
-        if (products != null) {
-            for (String name : products) {
-                if (findByName(name) != null) {
-                    known.add(name);
-                }
-            }
-        }
+        List<String> known = knownProducts(products);
         if (known.isEmpty()) {
             usedInButton.setVisible(false);
             usedInButton.putClientProperty("products", null);
@@ -1893,15 +2212,15 @@ public class JEIPanel extends PluginPanel {
             }
             if (error != null) {
                 if (!(unwrap(error) instanceof RequestCancelledException)) {
-                    populateMonsterDetail(pending, Optional.empty());
+                    populateMonsterDetail(pending, Optional.empty(), WikiFailures.monster(unwrap(error)));
                 }
                 return;
             }
-            populateMonsterDetail(pending, info);
+            populateMonsterDetail(pending, info, null);
         }));
     }
 
-    private void populateMonsterDetail(String monsterName, Optional<MonsterInfo> infoOpt) {
+    private void populateMonsterDetail(String monsterName, Optional<MonsterInfo> infoOpt, String error) {
         usedInListPanel.removeAll();
         usedInListPanel.add(backToDropsButton());
         String header = monsterName;
@@ -1910,13 +2229,22 @@ public class JEIPanel extends PluginPanel {
         }
         usedInListPanel.add(plainLabel(header, "title", Color.WHITE));
         usedInListPanel.add(Box.createRigidArea(new Dimension(0, 6)));
-        if (infoOpt.isPresent() && !infoOpt.get().locations.isEmpty()) {
+        if (error != null) {
+            usedInListPanel.add(noteLabel(error));
+            JButton retry = linkButton("Retry", "small");
+            retry.setForeground(LINK);
+            retry.addActionListener(e -> {
+                monsterService.retry(monsterName);
+                showMonsterDetail(monsterName);
+            });
+            usedInListPanel.add(retry);
+        } else if (infoOpt.isPresent() && !infoOpt.get().locations.isEmpty()) {
             usedInListPanel.add(plainLabel("Locations", "bodyBold", ColorScheme.LIGHT_GRAY_COLOR));
             for (String location : infoOpt.get().locations) {
                 usedInListPanel.add(htmlLine("\u00b7 " + escape(location), "#c8c8c8", "small"));
             }
         } else {
-            usedInListPanel.add(plainLabel("Location data not available.", "small", MUTED));
+            usedInListPanel.add(plainLabel("No locations are listed for this monster.", "small", MUTED));
         }
         usedInListPanel.add(Box.createRigidArea(new Dimension(0, 8)));
         JButton wiki = linkButton("Open Wiki page", "button");

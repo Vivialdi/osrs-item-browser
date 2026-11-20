@@ -1,6 +1,6 @@
 package com.osr.jei.service;
 
-import com.osr.jei.wiki.BoundedCache;
+import com.osr.jei.wiki.TtlCache;
 import com.osr.jei.wiki.WikiPages;
 import lombok.extern.slf4j.Slf4j;
 
@@ -10,7 +10,7 @@ import java.util.Locale;
 import java.util.concurrent.CompletableFuture;
 
 /**
- * Loads an item page once and reuses the parsed result.
+ * Loads an item page once and reuses the parsed result for {@link WikiPages#TTL_MS}.
  * Confirmed missing pages stay cached. Transport errors do not.
  */
 @Slf4j
@@ -20,7 +20,7 @@ public class ItemDetailsService {
     static final int CACHE_SIZE = 96;
 
     private final WikiPages pages;
-    private final BoundedCache<String, ItemDetails> cache = new BoundedCache<>(CACHE_SIZE);
+    private final TtlCache<String, ItemDetails> cache = new TtlCache<>(CACHE_SIZE, WikiPages.TTL_MS);
 
     @Inject
     public ItemDetailsService(WikiPages pages) {
@@ -32,7 +32,16 @@ public class ItemDetailsService {
         if (itemName == null || itemName.isEmpty()) {
             return null;
         }
-        return cache.get(itemName.toLowerCase(Locale.ROOT));
+        return cache.get(itemName.toLowerCase(Locale.ROOT), System.currentTimeMillis());
+    }
+
+    /** Drops a parsed page and its failure holdoff so the next load can fetch it. */
+    public void retry(String itemName) {
+        if (itemName == null || itemName.isEmpty()) {
+            return;
+        }
+        cache.remove(itemName.toLowerCase(Locale.ROOT));
+        pages.allowRetry(itemName);
     }
 
     public CompletableFuture<ItemDetails> load(String itemName) {
@@ -40,7 +49,7 @@ public class ItemDetailsService {
             return CompletableFuture.completedFuture(ItemDetails.EMPTY);
         }
         String key = itemName.toLowerCase(Locale.ROOT);
-        ItemDetails cached = cache.get(key);
+        ItemDetails cached = cache.get(key, System.currentTimeMillis());
         if (cached != null) {
             return CompletableFuture.completedFuture(cached);
         }
@@ -54,7 +63,7 @@ public class ItemDetailsService {
                 throw new java.util.concurrent.CompletionException(cause);
             }
             ItemDetails details = ItemDetails.from(page);
-            cache.put(key, details);
+            cache.put(key, details, System.currentTimeMillis());
             return details;
         });
     }

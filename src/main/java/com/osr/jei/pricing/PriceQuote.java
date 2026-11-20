@@ -16,11 +16,26 @@ public final class PriceQuote {
     public final long instantSell;
     /** Midpoint when both sides exist, otherwise whichever side is present. */
     public final long mid;
+    /** Unix seconds of the latest instant-buy trade, or {@code 0} when absent. */
+    public final long highTime;
+    /** Unix seconds of the latest instant-sell trade, or {@code 0} when absent. */
+    public final long lowTime;
 
     public PriceQuote(long instantBuy, long instantSell, long mid) {
+        this(instantBuy, instantSell, mid, 0L, 0L);
+    }
+
+    public PriceQuote(long instantBuy, long instantSell, long mid, long highTime, long lowTime) {
         this.instantBuy = instantBuy;
         this.instantSell = instantSell;
         this.mid = mid;
+        this.highTime = highTime;
+        this.lowTime = lowTime;
+    }
+
+    /** The newer trade time, in unix seconds, or {@code 0} when neither is known. */
+    public long newestTimeSeconds() {
+        return Math.max(highTime, lowTime);
     }
 
     public boolean known() {
@@ -51,7 +66,18 @@ public final class PriceQuote {
         } else {
             mid = low;
         }
-        return new PriceQuote(high, low, mid);
+        return new PriceQuote(high, low, mid, seconds(entry, "highTime"), seconds(entry, "lowTime"));
+    }
+
+    private static long seconds(JsonObject entry, String field) {
+        if (entry == null || !entry.has(field) || entry.get(field).isJsonNull()) {
+            return 0L;
+        }
+        try {
+            return entry.get(field).getAsLong();
+        } catch (RuntimeException ignored) {
+            return 0L;
+        }
     }
 
     public static PriceQuote fromRoot(JsonObject root, int itemId) {

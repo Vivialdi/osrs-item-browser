@@ -25,9 +25,12 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * RuneLite's shared OkHttp client and Gson. Calls are enqueued on OkHttp's
- * dispatcher. A 429, 5xx, or maxlag response schedules one delayed retry and
- * never blocks a thread with sleep. Transient failures are not cached by callers.
+ * RuneLite's shared OkHttp client and Gson. The client used here is a
+ * {@code newBuilder()} of the injected one, so it keeps that dispatcher and
+ * connection pool and only adds timeouts. Calls are enqueued, never run on
+ * the client thread. A 429, 503, other 5xx, or maxlag response schedules one
+ * delayed retry and never blocks a thread with sleep. A timeout or a dropped
+ * connection is not retried. Transient failures are not cached by callers.
  */
 @Slf4j
 @Singleton
@@ -37,6 +40,9 @@ public class WikiHttp {
         "OSRS-Item-Browser (RuneLite plugin; +https://github.com/Vivialdi/osrs-item-browser)";
 
     public static final long MAX_BACKOFF_MS = 8_000L;
+    public static final int CONNECT_TIMEOUT_SECONDS = 10;
+    public static final int READ_TIMEOUT_SECONDS = 20;
+    public static final int CALL_TIMEOUT_SECONDS = 20;
 
     private final OkHttpClient okHttpClient;
     private final Gson gson;
@@ -55,8 +61,17 @@ public class WikiHttp {
 
     @Inject
     public WikiHttp(OkHttpClient okHttpClient, Gson gson) {
-        this.okHttpClient = okHttpClient;
+        this.okHttpClient = okHttpClient.newBuilder()
+            .connectTimeout(CONNECT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+            .readTimeout(READ_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+            .callTimeout(CALL_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+            .build();
         this.gson = gson;
+    }
+
+    /** Derived client. Shares the injected client's dispatcher. */
+    public OkHttpClient httpClient() {
+        return okHttpClient;
     }
 
     /** Cancels item-page calls and their retries. Session-long fetches stay up. */

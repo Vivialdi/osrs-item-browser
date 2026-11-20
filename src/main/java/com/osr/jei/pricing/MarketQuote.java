@@ -22,6 +22,17 @@ public final class MarketQuote {
         Integer buyLimit,
         boolean limitsReady
     ) {
+        return describe(ironman, itemId, quote, buyLimit, limitsReady, false);
+    }
+
+    public static MarketQuote describe(
+        boolean ironman,
+        int itemId,
+        PriceQuote quote,
+        Integer buyLimit,
+        boolean limitsReady,
+        boolean limitsUnavailable
+    ) {
         boolean exempt = GeTax.exempt(itemId);
         boolean priced = quote != null && quote.instantBuy > 0L && quote.instantSell > 0L;
         Long margin = priced ? GeTax.margin(quote.instantBuy, quote.instantSell, exempt) : null;
@@ -36,7 +47,7 @@ public final class MarketQuote {
                 body.append(String.format("margin %,d gp after tax", margin));
             }
         }
-        appendLimit(body, buyLimit, limitsReady, margin);
+        appendLimit(body, buyLimit, limitsReady, limitsUnavailable, margin);
         if (body.length() == 0) {
             return new MarketQuote("", 0);
         }
@@ -48,9 +59,17 @@ public final class MarketQuote {
         return new MarketQuote(text, sign);
     }
 
-    private static void appendLimit(StringBuilder body, Integer buyLimit, boolean limitsReady, Long margin) {
+    private static void appendLimit(
+        StringBuilder body,
+        Integer buyLimit,
+        boolean limitsReady,
+        boolean limitsUnavailable,
+        Long margin
+    ) {
         String limitText;
-        if (!limitsReady) {
+        if (!limitsReady && limitsUnavailable) {
+            limitText = "buy limits unavailable";
+        } else if (!limitsReady) {
             limitText = "buy limit loading";
         } else if (buyLimit == null) {
             limitText = "buy limit not listed";

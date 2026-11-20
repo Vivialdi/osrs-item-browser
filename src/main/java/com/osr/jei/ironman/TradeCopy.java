@@ -42,7 +42,7 @@ public final class TradeCopy {
             return "";
         }
         if (quote == null || !quote.known()) {
-            return ironman ? "" : "Not on GE / no price data";
+            return ironman ? "" : "Not on the Grand Exchange.";
         }
         long value = quote.instantBuy > 0 ? quote.instantBuy : quote.mid;
         if (ironman) {
