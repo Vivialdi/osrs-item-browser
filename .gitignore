@@ -1,5 +1,7 @@
-# Maven build output — never commit compiled classes or JARs
+# Maven / Gradle build output
 target/
+build/
+.gradle/
 
 # Maven binary distribution (not part of the plugin source)
 bin/

@@ -1,74 +1,83 @@
 package com.osr.jei.service;
 
-import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
+import com.osr.jei.pricing.PriceQuote;
+import com.osr.jei.pricing.PriceSnapshot;
+import com.osr.jei.wiki.RequestCancelledException;
+import com.osr.jei.wiki.WikiHttp;
 import lombok.extern.slf4j.Slf4j;
-import okhttp3.OkHttpClient;
-import okhttp3.Request;
-import okhttp3.Response;
 
 import javax.inject.Inject;
 import javax.inject.Singleton;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CompletableFuture;
 
 /**
- * Fetches live Grand Exchange prices from the OSRS Wiki prices API.
- * Results are cached so we don't spam the API for the same item.
+ * One bulk {@code /latest} download shared by every price lookup, including the nature rune.
+ * The snapshot lives for {@link PriceSnapshot#TTL_MS}. A failed refresh is not stored.
+ * Further clicks before {@link #FAILURE_BACKOFF_MS} reuse the previous snapshot or report
+ * a miss, and do not hit the prices API again.
  */
 @Slf4j
 @Singleton
 public class PriceService {
 
-    private static final String PRICES_API = "https://prices.runescape.wiki/api/v1/osrs/latest";
-    private static final String USER_AGENT = "OSRS-JEI-RuneLite-Plugin/1.0 (github contact)";
+    static final String LATEST = "https://prices.runescape.wiki/api/v1/osrs/latest";
+    static final long FAILURE_BACKOFF_MS = 8_000L;
 
-    @Inject private OkHttpClient okHttpClient;
+    private final WikiHttp wikiHttp;
+    private final Object lock = new Object();
+    private volatile PriceSnapshot snapshot;
+    private volatile long nextAttemptAt;
+    private CompletableFuture<PriceSnapshot> inflight;
 
-    // Simple in-memory cache: item ID -> price in gp
-    private final ConcurrentHashMap<Integer, Long> cache = new ConcurrentHashMap<>();
+    @Inject
+    public PriceService(WikiHttp wikiHttp) {
+        this.wikiHttp = wikiHttp;
+    }
 
-    /**
-     * Returns the average GE price for the given item ID, or -1 if unavailable.
-     * Call this on a background thread — it makes a network request.
-     */
-    public long getPrice(int itemId) {
-        if (cache.containsKey(itemId)) {
-            return cache.get(itemId);
+    public CompletableFuture<PriceQuote> getQuote(int itemId) {
+        return loadSnapshot().thenApply(loaded -> loaded.quote(itemId));
+    }
+
+    private CompletableFuture<PriceSnapshot> loadSnapshot() {
+        long now = System.currentTimeMillis();
+        PriceSnapshot current = snapshot;
+        if (current != null && current.fresh(now)) {
+            return CompletableFuture.completedFuture(current);
         }
-
-        try {
-            Request request = new Request.Builder()
-                .url(PRICES_API + "?id=" + itemId)
-                .header("User-Agent", USER_AGENT)
-                .build();
-
-            try (Response response = okHttpClient.newCall(request).execute()) {
-                if (!response.isSuccessful() || response.body() == null) return -1;
-
-                JsonObject root = new JsonParser()
-                    .parse(response.body().string()).getAsJsonObject();
-                JsonObject data = root.getAsJsonObject("data");
-                if (data == null || !data.has(String.valueOf(itemId))) return -1;
-
-                JsonObject entry = data.getAsJsonObject(String.valueOf(itemId));
-                long high = entry.has("high") ? entry.get("high").getAsLong() : -1;
-                long low  = entry.has("low")  ? entry.get("low").getAsLong()  : -1;
-
-                long price;
-                if (high > 0 && low > 0) {
-                    price = (high + low) / 2;
-                } else if (high > 0) {
-                    price = high;
-                } else {
-                    price = low;
-                }
-
-                if (price > 0) cache.put(itemId, price);
-                return price;
+        if (now < nextAttemptAt) {
+            return CompletableFuture.completedFuture(current == null ? PriceSnapshot.empty() : current);
+        }
+        synchronized (lock) {
+            current = snapshot;
+            if (current != null && current.fresh(System.currentTimeMillis())) {
+                return CompletableFuture.completedFuture(current);
             }
-        } catch (Exception e) {
-            log.warn("Could not fetch price for item {}: {}", itemId, e.getMessage());
-            return -1;
+            if (inflight != null) {
+                return inflight;
+            }
+            CompletableFuture<PriceSnapshot> mine = new CompletableFuture<>();
+            inflight = mine;
+            wikiHttp.getJson(LATEST).whenComplete((root, error) -> {
+                synchronized (lock) {
+                    if (inflight == mine) {
+                        inflight = null;
+                    }
+                }
+                if (error != null) {
+                    Throwable cause = error.getCause() == null ? error : error.getCause();
+                    if (!(cause instanceof RequestCancelledException)) {
+                        nextAttemptAt = System.currentTimeMillis() + FAILURE_BACKOFF_MS;
+                        log.debug("Could not refresh GE prices: {}", cause.getMessage());
+                    }
+                    mine.completeExceptionally(cause);
+                    return;
+                }
+                PriceSnapshot fresh = PriceSnapshot.fromRoot(root, System.currentTimeMillis());
+                snapshot = fresh;
+                nextAttemptAt = 0;
+                mine.complete(fresh);
+            });
+            return mine;
         }
     }
 }

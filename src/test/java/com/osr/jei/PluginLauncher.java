@@ -6,7 +6,11 @@ import net.runelite.client.RuneLite;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.plugins.PluginManager;
 
-import javax.swing.*;
+import javax.swing.SwingUtilities;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Launches RuneLite and manually loads the OSRS JEI plugin.
@@ -23,26 +27,30 @@ public class PluginLauncher {
 
     public static void main(String[] args) throws Exception {
         System.out.println("[JEI] Starting RuneLite...");
+        ScheduledExecutorService wait = Executors.newSingleThreadScheduledExecutor(runnable -> {
+            Thread thread = new Thread(runnable, "jei-launch");
+            thread.setDaemon(true);
+            return thread;
+        });
+        AtomicInteger attempts = new AtomicInteger();
+        wait.scheduleWithFixedDelay(() -> {
+            Injector injector = RuneLite.getInjector();
+            if (injector == null) {
+                int attempt = attempts.incrementAndGet();
+                System.out.println("[JEI] Waiting for Guice injector... attempt " + attempt);
+                if (attempt >= 20) {
+                    System.err.println("[JEI] ERROR: RuneLite injector never became available.");
+                    wait.shutdown();
+                }
+                return;
+            }
+            wait.shutdown();
+            SwingUtilities.invokeLater(() -> startPlugin(injector));
+        }, 0, 500, TimeUnit.MILLISECONDS);
         RuneLite.main(new String[]{"--developer-mode"});
+    }
 
-        // Poll until RuneLite's Guice injector is ready
-        Injector injector = null;
-        for (int i = 0; i < 20; i++) {
-            injector = RuneLite.getInjector();
-            if (injector != null) break;
-            System.out.println("[JEI] Waiting for Guice injector... attempt " + (i + 1));
-            Thread.sleep(500);
-        }
-
-        if (injector == null) {
-            System.err.println("[JEI] ERROR: RuneLite injector never became available.");
-            return;
-        }
-
-        System.out.println("[JEI] Got injector. Registering plugin...");
-
-        final Injector parentInjector = injector;
-        SwingUtilities.invokeLater(() -> {
+    private static void startPlugin(Injector parentInjector) {
             try {
                 // Ask RuneLite's ConfigManager to create our config proxy
                 // (this is what @Provides JEIConfig in JEIPlugin.java does normally)
@@ -69,6 +77,5 @@ public class PluginLauncher {
                 System.err.println("[JEI] ERROR starting plugin:");
                 e.printStackTrace();
             }
-        });
     }
 }
