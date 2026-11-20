@@ -1,5 +1,7 @@
 package com.osr.jei.owned;
 
+import java.awt.Color;
+
 /**
  * Sidebar copy for owned counts. An unopened bank is labelled, and a short
  * count uses a trailing {@code +} so it is not presented as a full total.
@@ -37,6 +39,28 @@ public final class OwnedText {
             ? String.format("have %,d / need %,d", owned, required)
             : String.format("have %,d+ / need %,d", owned, required);
         return "<font color='" + color + "'>" + text + "</font>";
+    }
+
+    /** Plain have/need text for a single-line icon row. */
+    public static String haveNeedPlain(long have, long need, boolean bankKnown) {
+        long owned = Math.max(0L, have);
+        long required = Math.max(0L, need);
+        return bankKnown
+            ? String.format("have %,d / need %,d", owned, required)
+            : String.format("have %,d+ / need %,d", owned, required);
+    }
+
+    /** Same green / red / unknown colours as {@link #haveNeedHtml}. */
+    public static Color haveNeedColor(long have, long need, boolean bankKnown) {
+        boolean shortOfKnown = OwnedItems.shortfall(Math.max(0L, have), Math.max(0L, need));
+        return tone(shortOfKnown, bankKnown);
+    }
+
+    private static Color tone(boolean shortOfKnown, boolean bankKnown) {
+        if (!shortOfKnown) {
+            return new Color(0x96, 0xDC, 0x96);
+        }
+        return bankKnown ? new Color(0xDC, 0x64, 0x64) : new Color(0xDC, 0xB4, 0x4B);
     }
 
     /** HTML fragment for one base-material row. */

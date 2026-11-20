@@ -93,12 +93,27 @@ public final class RecipeTreeView {
         Counts counts,
         Marks marks
     ) {
+        fill(body, style, result, anyOpen, actions, counts, marks, true);
+    }
+
+    public static void fill(
+        JPanel body,
+        UiStyle style,
+        BuildExpander.Result result,
+        boolean anyOpen,
+        Actions actions,
+        Counts counts,
+        Marks marks,
+        boolean includeHeader
+    ) {
         body.removeAll();
         boolean ingredients = hasIngredients(result);
-        JLabel header = label(style, ingredients
-            ? "Crafting / Build path"
-            : (result.recipes.size() == 1 ? "Crafting recipe" : "Crafting recipes"), "bodyBold", Color.WHITE);
-        body.add(header);
+        if (includeHeader) {
+            JLabel header = label(style, ingredients
+                ? "Crafting / Build path"
+                : (result.recipes.size() == 1 ? "Crafting recipe" : "Crafting recipes"), "bodyBold", Color.WHITE);
+            body.add(header);
+        }
         if (ingredients) {
             JButton expand = button(style, "Expand tree", "button");
             expand.setForeground(LINK);
@@ -226,9 +241,20 @@ public final class RecipeTreeView {
         if (node.cycle) {
             text = text + " (loop)";
         }
-        String htmlText = escape(text) + ownedSuffix(counts, node.name, node.quantity, false);
         Color nameColor = unmet ? UNMET : (open ? LINK : ColorScheme.LIGHT_GRAY_COLOR);
-        WrappingLabel name = html(style, htmlText, "small", nameColor);
+        EllipsisLabel name = new EllipsisLabel();
+        style.apply(name, "small");
+        name.setAlignmentX(0f);
+        String suffix = "";
+        Color suffixColor = nameColor;
+        if (counts != null && counts.show() && counts.inventoryKnown()) {
+            Long have = counts.have(node.name);
+            if (have != null) {
+                suffix = OwnedText.haveNeedPlain(have.longValue(), node.quantity, counts.bankKnown());
+                suffixColor = OwnedText.haveNeedColor(have.longValue(), node.quantity, counts.bankKnown());
+            }
+        }
+        name.setPieces(text, nameColor, suffix, suffixColor);
         if (open) {
             String itemName = node.name;
             MouseAdapter opener = new MouseAdapter() {
@@ -287,9 +313,11 @@ public final class RecipeTreeView {
     }
 
     private static JLabel label(UiStyle style, String text, String role, Color color) {
-        JLabel label = new JLabel(text);
+        WrappingLabel label = new WrappingLabel();
         style.apply(label, role);
         label.setForeground(color);
+        label.setHtml(escape(text));
+        label.setToolTipText(text);
         label.setAlignmentX(0f);
         return label;
     }
@@ -304,7 +332,7 @@ public final class RecipeTreeView {
     }
 
     private static JButton button(UiStyle style, String text, String role) {
-        JButton button = new JButton(text);
+        JButton button = new WrappingButton(text);
         style.apply(button, role);
         button.setBackground(ColorScheme.DARKER_GRAY_COLOR);
         button.setOpaque(false);

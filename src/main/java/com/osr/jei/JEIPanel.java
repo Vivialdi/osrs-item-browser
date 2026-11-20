@@ -39,9 +39,16 @@ import com.osr.jei.service.ItemDetails;
 import com.osr.jei.service.ItemDetailsService;
 import com.osr.jei.service.MonsterService;
 import com.osr.jei.service.PriceService;
+import com.osr.jei.ui.CollapsibleSection;
+import com.osr.jei.ui.EllipsisLabel;
 import com.osr.jei.ui.RecipeTreeView;
+import com.osr.jei.ui.ScrollWidthPanel;
+import com.osr.jei.ui.SectionState;
+import com.osr.jei.ui.SectionSummaries;
 import com.osr.jei.ui.SplitLayout;
+import com.osr.jei.ui.StatGrid;
 import com.osr.jei.ui.UiStyle;
+import com.osr.jei.ui.WrappingButton;
 import com.osr.jei.ui.WrappingLabel;
 import com.osr.jei.wiki.RequestCancelledException;
 import com.osr.jei.wiki.WikiHttp;
@@ -83,7 +90,6 @@ import javax.swing.event.DocumentListener;
 import javax.swing.plaf.basic.BasicSplitPaneDivider;
 import javax.swing.plaf.basic.BasicSplitPaneUI;
 import java.awt.BorderLayout;
-import java.awt.CardLayout;
 import java.awt.Color;
 import java.awt.Component;
 import java.awt.Cursor;
@@ -178,40 +184,47 @@ public class JEIPanel extends PluginPanel {
     private volatile GameState pendingGameState;
     private boolean dividerApplied;
     private int lastWrapWidth = -1;
+    private boolean reflowQueued;
     private ScheduledFuture<?> pendingSearch;
     private ScheduledFuture<?> pendingDetail;
 
     private JSplitPane split;
     private JPanel gridPanel;
     private JPanel selectedCell;
-    private CardLayout gridCardLayout;
-    private JPanel gridCardPanel;
-    private JPanel usedInListPanel;
+    private JScrollPane detailScroll;
     private JPanel historyPanel;
     private JPanel historyIcons;
     private JLabel indexStatus;
     private JToggleButton favToggle;
     private JButton backButton;
     private JButton starButton;
-    private JButton usedInButton;
-    private JButton dropsButton;
     private JButton wikiButton;
     private JPanel nameRow;
-    private JLabel lblName;
+    private WrappingLabel lblName;
     private JLabel lblIronman;
     private JPanel marketBox;
-    private JLabel lblPrice;
-    private WrappingLabel lblMarket;
+    private StatGrid marketGrid;
     private WrappingLabel lblOwned;
-    private JLabel lblMembersWeight;
-    private JLabel lblHaAlch;
+    private WrappingLabel lblMembersWeight;
+    private WrappingLabel lblHaAlch;
+    private WrappingLabel lblAlchProfit;
+    private JPanel alchBox;
     private JPanel detailPanel;
-    private JPanel equipmentSection;
+    private CollapsibleSection equipmentSection;
     private JPanel equipmentContent;
-    private JPanel shopsSection;
+    private CollapsibleSection shopsSection;
     private JPanel shopsContent;
-    private JPanel recipeSection;
+    private CollapsibleSection recipeSection;
     private JPanel recipeBody;
+    private CollapsibleSection usedInSection;
+    private JPanel usedInContent;
+    private CollapsibleSection dropsSection;
+    private JPanel dropsContent;
+    private final SectionState sectionState = new SectionState();
+    /** True while a section header is opening, so that refresh does not start a wiki fetch. */
+    private boolean fillingSection;
+    private final Set<String> openMonsters = new LinkedHashSet<>();
+    private final Map<String, LocationView> locationViews = new HashMap<>();
 
     private String selectedItemName = "";
     private SearchItem shownItem;
@@ -226,7 +239,6 @@ public class JEIPanel extends PluginPanel {
     private final Set<String> compareStarted = new LinkedHashSet<>();
     private final Set<String> compareFailed = new LinkedHashSet<>();
     private boolean syncingFilters;
-    private String gridMode = "grid";
     private JComboBox<SearchCriteria.Trade> tradeCombo;
     private JComboBox<SearchCriteria.Members> membersCombo;
     private JComboBox<SearchCriteria.Equip> equipCombo;
@@ -285,17 +297,7 @@ public class JEIPanel extends PluginPanel {
             @Override
             public void componentResized(ComponentEvent e) {
                 maybeApplyInitialDivider();
-                int width = getWidth();
-                if (Math.abs(width - lastWrapWidth) < 2) {
-                    return;
-                }
-                lastWrapWidth = width;
-                if (detailPanel != null) {
-                    detailPanel.revalidate();
-                }
-                if (usedInListPanel != null) {
-                    usedInListPanel.revalidate();
-                }
+                queueReflow();
             }
         });
 
@@ -354,7 +356,11 @@ public class JEIPanel extends PluginPanel {
         if (text == null || text.isEmpty()) {
             indexStatus.setVisible(false);
         } else {
-            indexStatus.setText(text);
+            if (indexStatus instanceof WrappingLabel) {
+                ((WrappingLabel) indexStatus).setHtml(escape(text));
+            } else {
+                indexStatus.setText(text);
+            }
             indexStatus.setVisible(true);
         }
         revalidate();
@@ -396,8 +402,9 @@ public class JEIPanel extends PluginPanel {
             return;
         }
         if ("dropSort".equals(key)) {
-            if ("drops".equals(gridMode)) {
-                SwingUtilities.invokeLater(this::showDropsExpanded);
+            if (dropsSection != null && dropsSection.isVisible() && dropsSection.isExpanded()
+                && shownDetails != null) {
+                populateDrops(shownDetails.drops);
             }
             return;
         }
@@ -413,6 +420,9 @@ public class JEIPanel extends PluginPanel {
             return;
         }
         style = UiStyle.from(config.fontSize(), config.fontStyle(), config.fontFamily());
+        if (marketGrid != null) {
+            marketGrid.useStyle(style);
+        }
         style.applyTree(this);
         applyResizeWeight();
         dividerApplied = true;
@@ -537,7 +547,6 @@ public class JEIPanel extends PluginPanel {
                 }
                 navStack.clear();
                 backButton.setVisible(false);
-                showGridCard();
                 loadItemDetail(item, true);
             });
         });
@@ -664,25 +673,19 @@ public class JEIPanel extends PluginPanel {
         gridPanel = new JPanel(new WrapLayout(FlowLayout.LEFT, 2, 2));
         gridPanel.setBackground(ColorScheme.DARKER_GRAY_COLOR);
         JScrollPane gridScroll = scroll(gridPanel);
+        gridScroll.setMinimumSize(new Dimension(0, 72));
 
-        usedInListPanel = new JPanel();
-        usedInListPanel.setLayout(new BoxLayout(usedInListPanel, BoxLayout.Y_AXIS));
-        usedInListPanel.setBackground(ColorScheme.DARKER_GRAY_COLOR);
-        usedInListPanel.setBorder(BorderFactory.createEmptyBorder(4, 4, 4, 4));
-        JScrollPane usedScroll = scroll(usedInListPanel);
-
-        gridCardLayout = new CardLayout();
-        gridCardPanel = new JPanel(gridCardLayout);
-        gridCardPanel.setBackground(ColorScheme.DARK_GRAY_COLOR);
-        gridCardPanel.add(gridScroll, "grid");
-        gridCardPanel.add(usedScroll, "usedIn");
-        gridCardPanel.setMinimumSize(new Dimension(0, 72));
-
-        JScrollPane detailScroll = scroll(buildDetailPanel());
+        detailScroll = scroll(buildDetailPanel());
         detailScroll.setMinimumSize(new Dimension(0, 120));
         detailScroll.setPreferredSize(new Dimension(PANEL_WIDTH, 180));
+        detailScroll.getViewport().addComponentListener(new ComponentAdapter() {
+            @Override
+            public void componentResized(ComponentEvent e) {
+                queueReflow();
+            }
+        });
 
-        split = new JSplitPane(JSplitPane.VERTICAL_SPLIT, gridCardPanel, detailScroll);
+        split = new JSplitPane(JSplitPane.VERTICAL_SPLIT, gridScroll, detailScroll);
         split.setContinuousLayout(true);
         split.setBorder(null);
         split.setDividerSize(6);
@@ -693,8 +696,7 @@ public class JEIPanel extends PluginPanel {
     }
 
     private JPanel buildDetailPanel() {
-        detailPanel = new JPanel();
-        detailPanel.setLayout(new BoxLayout(detailPanel, BoxLayout.Y_AXIS));
+        detailPanel = verticalBox();
         detailPanel.setBackground(ColorScheme.DARKER_GRAY_COLOR);
         detailPanel.setBorder(BorderFactory.createEmptyBorder(6, 6, 6, 6));
 
@@ -705,11 +707,11 @@ public class JEIPanel extends PluginPanel {
         lblName = new WrappingLabel();
         style.apply(lblName, "title");
         lblName.setForeground(Color.WHITE);
-        lblName.setText("Search for an item above");
+        setWrap(lblName, "Search for an item above");
 
         starButton = linkButton("\u2606", "button");
         starButton.setForeground(GOLD);
-        starButton.setMargin(new Insets(0, 4, 0, 0));
+        starButton.setMargin(new Insets(0, 2, 0, 0));
         starButton.setToolTipText("Add to favourites");
         starButton.setVisible(false);
         starButton.addActionListener(e -> {
@@ -722,10 +724,8 @@ public class JEIPanel extends PluginPanel {
         lblIronman = plainLabel("Ironman", "small", new Color(140, 175, 140));
         lblIronman.setVisible(false);
 
-        JPanel nameStack = new JPanel();
-        nameStack.setLayout(new BoxLayout(nameStack, BoxLayout.Y_AXIS));
+        JPanel nameStack = verticalBox();
         nameStack.setOpaque(false);
-        nameStack.setAlignmentX(LEFT_ALIGNMENT);
         nameStack.add(lblName);
         nameStack.add(lblIronman);
 
@@ -735,22 +735,26 @@ public class JEIPanel extends PluginPanel {
                 Dimension preferred = getPreferredSize();
                 return new Dimension(Integer.MAX_VALUE, preferred.height);
             }
+
+            @Override
+            public Dimension getMinimumSize() {
+                Dimension preferred = getPreferredSize();
+                return new Dimension(0, preferred.height);
+            }
         };
         nameRow.setBackground(ColorScheme.DARKER_GRAY_COLOR);
         nameRow.setAlignmentX(LEFT_ALIGNMENT);
         nameRow.add(nameStack, BorderLayout.CENTER);
         nameRow.add(starButton, BorderLayout.EAST);
 
-        lblMembersWeight = plainLabel(" ", "small", MUTED);
+        lblMembersWeight = new WrappingLabel();
+        style.apply(lblMembersWeight, "small");
+        lblMembersWeight.setForeground(MUTED);
+        setWrap(lblMembersWeight, " ");
         lblOwned = new WrappingLabel();
         style.apply(lblOwned, "small");
         lblOwned.setForeground(MUTED);
         lblOwned.setVisible(false);
-        lblPrice = plainLabel(" ", "price", GOLD);
-        lblMarket = new WrappingLabel();
-        style.apply(lblMarket, "small");
-        lblMarket.setForeground(NEUTRAL);
-        lblMarket.setVisible(false);
         lblPriceNote = new WrappingLabel();
         style.apply(lblPriceNote, "small");
         lblPriceNote.setForeground(MUTED);
@@ -760,35 +764,65 @@ public class JEIPanel extends PluginPanel {
         priceRetry.setToolTipText("Load Grand Exchange prices and buy limits again.");
         priceRetry.setVisible(false);
         priceRetry.addActionListener(e -> retryPrices());
+        marketGrid = new StatGrid(style);
+        marketGrid.setVisible(false);
         marketBox = verticalBox();
-        marketBox.add(lblPrice);
+        marketBox.add(marketGrid);
         marketBox.add(lblPriceNote);
         marketBox.add(priceRetry);
-        marketBox.add(lblMarket);
-        lblHaAlch = plainLabel(" ", "body", GOOD);
 
-        equipmentSection = section("Equipment");
-        equipmentContent = verticalBox();
-        equipmentSection.add(equipmentContent);
+        lblHaAlch = new WrappingLabel();
+        style.apply(lblHaAlch, "body");
+        lblHaAlch.setForeground(GOOD);
+        lblHaAlch.setVisible(false);
+        lblAlchProfit = new WrappingLabel();
+        style.apply(lblAlchProfit, "body");
+        lblAlchProfit.setVisible(false);
+        alchBox = verticalBox();
+        alchBox.add(lblHaAlch);
+        alchBox.add(lblAlchProfit);
 
-        shopsSection = section("Shop sources");
-        shopsContent = verticalBox();
-        shopsSection.add(shopsContent);
-
-        recipeSection = verticalBox();
-        recipeSection.setVisible(false);
-        recipeBody = verticalBox();
-        recipeSection.add(recipeBody);
-
-        usedInButton = linkButton("Used to craft", "bodyBold");
-        usedInButton.setForeground(GOOD);
-        usedInButton.addActionListener(e -> showUsedInExpanded());
-        usedInButton.setVisible(false);
-
-        dropsButton = linkButton("Dropped by", "bodyBold");
-        dropsButton.setForeground(GOOD);
-        dropsButton.addActionListener(e -> showDropsExpanded());
-        dropsButton.setVisible(false);
+        equipmentSection = collapsible(SectionState.EQUIPMENT);
+        equipmentContent = equipmentSection.body();
+        equipmentSection.setOnToggle(() -> {
+            if (equipmentSection.isExpanded() && compareOpen && shownDetails != null) {
+                renderDetails();
+            }
+        });
+        shopsSection = collapsible(SectionState.SHOPS);
+        shopsContent = shopsSection.body();
+        shopsSection.setOnToggle(() -> {
+            if (shownDetails != null) {
+                populateShops(shownDetails.shops, shownGeBuy());
+            }
+        });
+        recipeSection = collapsible(SectionState.CRAFTING);
+        recipeBody = recipeSection.body();
+        recipeSection.setOnToggle(() -> {
+            if (shownDetails == null) {
+                return;
+            }
+            fillingSection = true;
+            try {
+                populateRecipes(shownDetails.recipes);
+            } finally {
+                fillingSection = false;
+            }
+        });
+        usedInSection = collapsible(SectionState.USED_IN);
+        usedInContent = usedInSection.body();
+        usedInSection.setOnToggle(() -> {
+            if (shownDetails != null) {
+                populateUsedIn(shownDetails.products);
+            }
+        });
+        dropsSection = collapsible(SectionState.DROPS);
+        dropsContent = dropsSection.body();
+        dropsSection.setOnToggle(() -> {
+            if (shownDetails != null) {
+                populateDrops(shownDetails.drops);
+            }
+        });
 
         wikiButton = linkButton("Open Wiki page", "button");
         wikiButton.setForeground(LINK);
@@ -807,6 +841,13 @@ public class JEIPanel extends PluginPanel {
         return detailPanel;
     }
 
+    private CollapsibleSection collapsible(String key) {
+        CollapsibleSection section = new CollapsibleSection(key, sectionState, style);
+        section.setVisible(false);
+        section.setAlignmentX(LEFT_ALIGNMENT);
+        return section;
+    }
+
     private void applySectionOrder() {
         if (detailPanel == null) {
             return;
@@ -815,14 +856,14 @@ public class JEIPanel extends PluginPanel {
         detailPanel.add(backButton);
         detailPanel.add(Box.createRigidArea(new Dimension(0, 4)));
         detailPanel.add(nameRow);
-        detailPanel.add(Box.createRigidArea(new Dimension(0, 3)));
+        detailPanel.add(Box.createRigidArea(new Dimension(0, 2)));
         detailPanel.add(lblMembersWeight);
         detailPanel.add(lblOwned);
-        detailPanel.add(Box.createRigidArea(new Dimension(0, 4)));
+        detailPanel.add(Box.createRigidArea(new Dimension(0, 6)));
         for (String section : DetailLayout.order(ironmanActive)) {
             detailPanel.add(sectionComponent(section));
-            detailPanel.add(Box.createRigidArea(new Dimension(0, 4)));
         }
+        detailPanel.add(Box.createRigidArea(new Dimension(0, 4)));
         detailPanel.add(notesBox);
         detailPanel.add(pageRetry);
         detailPanel.add(wikiButton);
@@ -835,15 +876,15 @@ public class JEIPanel extends PluginPanel {
             case DetailLayout.GE:
                 return marketBox;
             case DetailLayout.ALCH:
-                return lblHaAlch;
+                return alchBox;
             case DetailLayout.EQUIPMENT:
                 return equipmentSection;
             case DetailLayout.SHOPS:
                 return shopsSection;
             case DetailLayout.USED_IN:
-                return usedInButton;
+                return usedInSection;
             case DetailLayout.DROPS:
-                return dropsButton;
+                return dropsSection;
             case DetailLayout.CRAFTING:
                 return recipeSection;
             default:
@@ -1010,7 +1051,6 @@ public class JEIPanel extends PluginPanel {
                 cell.repaint();
                 navStack.clear();
                 backButton.setVisible(false);
-                showGridCard();
                 loadItemDetail(item, true);
             }
 
@@ -1066,6 +1106,8 @@ public class JEIPanel extends PluginPanel {
         }
         int gen = detailGeneration.incrementAndGet();
         monsterGeneration.incrementAndGet();
+        openMonsters.clear();
+        locationViews.clear();
         expandedPaths.clear();
         treeFailed.clear();
         treeLoadInFlight = false;
@@ -1186,7 +1228,7 @@ public class JEIPanel extends PluginPanel {
         if (priceRetry != null) {
             priceRetry.setVisible(false);
         }
-        lblPrice.setText("Loading prices\u2026");
+        showPriceLoading();
         CompletableFuture<PriceLookup> priceFuture = priceService.lookup(item.id);
         CompletableFuture<PriceLookup> natureFuture = priceService.lookup(ItemID.NATURERUNE);
         CompletableFuture.allOf(priceFuture, natureFuture).whenComplete((ignored, error) ->
@@ -1212,14 +1254,16 @@ public class JEIPanel extends PluginPanel {
     }
 
     private void renderLoading(SearchItem item) {
-        lblName.setText(escape(item.name));
-        ((WrappingLabel) lblName).setHtml(escape(item.name));
+        setWrap(lblName, item.name);
         updateStarButton(item);
         starButton.setVisible(true);
-        lblMembersWeight.setText(item.members ? "Members" : "F2P");
+        setWrap(lblMembersWeight, item.members ? "Members" : "F2P");
         updateIronmanBadge();
-        lblPrice.setForeground(ironmanActive ? MUTED : GOLD);
-        lblPrice.setText(config.showPrices() ? "Loading..." : " ");
+        if (config.showPrices()) {
+            showPriceLoading();
+        } else {
+            clearPrices();
+        }
         shownDetails = null;
         detailProblem = null;
         shownPrice = PriceQuote.MISSING;
@@ -1244,10 +1288,9 @@ public class JEIPanel extends PluginPanel {
         updateMarket();
         ensureLimits();
         updateOwnedHeader();
-        lblHaAlch.setText(" ");
+        clearAlch();
         hideDetailSections();
         wikiButton.setVisible(true);
-        showGridCard();
         detailPanel.revalidate();
         detailPanel.repaint();
     }
@@ -1310,7 +1353,7 @@ public class JEIPanel extends PluginPanel {
     }
 
     private void paintItemHeader(SearchItem item, double weight) {
-        ((WrappingLabel) lblName).setHtml(escape(item.name));
+        setWrap(lblName, item.name);
         updateStarButton(item);
         starButton.setVisible(true);
         wikiButton.setVisible(true);
@@ -1319,38 +1362,117 @@ public class JEIPanel extends PluginPanel {
         if (!Double.isNaN(weight)) {
             weightText = weight == 0.0 ? "  \u00b7  0 kg" : String.format("  \u00b7  %.3g kg", weight);
         }
-        lblMembersWeight.setText(members + weightText);
+        setWrap(lblMembersWeight, members + weightText);
         updateIronmanBadge();
         updateOwnedHeader();
     }
 
     private long updateTradeLines(SearchItem item) {
-        String geLine = priceUnavailable ? "" : TradeCopy.geLine(ironmanActive, config.showPrices(), shownPrice);
-        if (!pricesFetched && config.showPrices() && !priceUnavailable) {
-            lblPrice.setText("Loading prices\u2026");
-        } else {
-            lblPrice.setText(geLine.isEmpty() ? " " : geLine);
-        }
-        lblPrice.setForeground(ironmanActive ? MUTED : GOLD);
+        paintGeBlock();
         updatePriceNote();
-        updateMarket();
         ensureLimits();
 
-        long geBuy = config.showPrices() && shownPrice != null && !priceUnavailable ? shownPrice.buyPrice() : -1;
+        long geBuy = shownGeBuy();
         long nature = config.showPrices() && shownNature != null && !priceUnavailable ? shownNature.buyPrice() : -1;
         Alchemy.Result alchemy = Alchemy.compute(item.haPrice, geBuy, nature);
-        String alchLine = TradeCopy.alchLine(ironmanActive, alchemy);
-        if (alchLine.isEmpty()) {
-            lblHaAlch.setText(" ");
-        } else {
-            lblHaAlch.setText(alchLine);
-            if (!ironmanActive && alchemy != null && alchemy.profit != null) {
-                lblHaAlch.setForeground(alchemy.profit >= 0 ? GOOD : BAD);
-            } else {
-                lblHaAlch.setForeground(ironmanActive ? GOLD : NEUTRAL);
+        paintAlch(alchemy);
+        return geBuy;
+    }
+
+    private void showPriceLoading() {
+        if (marketGrid == null) {
+            return;
+        }
+        List<StatGrid.Row> rows = new ArrayList<>();
+        rows.add(new StatGrid.Row("", "Loading prices\u2026", ironmanActive ? MUTED : GOLD));
+        marketGrid.setRows(rows);
+    }
+
+    private void clearPrices() {
+        if (marketGrid != null) {
+            marketGrid.setRows(Collections.emptyList());
+        }
+    }
+
+    private void clearAlch() {
+        if (lblHaAlch != null) {
+            lblHaAlch.setVisible(false);
+        }
+        if (lblAlchProfit != null) {
+            lblAlchProfit.setVisible(false);
+        }
+    }
+
+    private long shownGeBuy() {
+        return config.showPrices() && shownPrice != null && !priceUnavailable ? shownPrice.buyPrice() : -1;
+    }
+
+    private void paintGeBlock() {
+        if (marketGrid == null) {
+            return;
+        }
+        if (!config.showPrices() || priceUnavailable) {
+            clearPrices();
+            return;
+        }
+        if (!pricesFetched) {
+            showPriceLoading();
+            return;
+        }
+        List<StatGrid.Row> rows = new ArrayList<>();
+        Color geColor = ironmanActive ? MUTED : GOLD;
+        if (!priceUnavailable) {
+            String geLine = TradeCopy.geLine(ironmanActive, true, shownPrice);
+            if (!geLine.isEmpty()) {
+                rows.add(new StatGrid.Row("", geLine, geColor));
             }
         }
-        return geBuy;
+        boolean ready = shownLimits != null && shownLimits.fetchedAt() > 0L;
+        boolean limitsUnavailable = !ready && limitsHoldoff;
+        Integer limit = ready && shownItem != null ? shownLimits.limit(shownItem.id) : null;
+        int itemId = shownItem == null ? -1 : shownItem.id;
+        MarketQuote quote = MarketQuote.describe(
+            ironmanActive, itemId, priceUnavailable ? PriceQuote.MISSING : shownPrice, limit, ready, limitsUnavailable);
+        String tip = ironmanActive
+            ? "Grand Exchange figures are a reference only."
+            : "Margin after the 2% GE tax, capped at 5m per item.";
+        for (MarketQuote.Line line : quote.lines) {
+            StatGrid.Row row = new StatGrid.Row(line.key, line.value, marketColor(line));
+            rows.add(row);
+        }
+        marketGrid.setRows(rows);
+        marketGrid.setToolTipText(quote.text.isEmpty() ? null : tip);
+    }
+
+    private Color marketColor(MarketQuote.Line line) {
+        if (ironmanActive || line == null || line.tone == 0) {
+            return ironmanActive ? MUTED : NEUTRAL;
+        }
+        return line.tone > 0 ? GOOD : BAD;
+    }
+
+    private void paintAlch(Alchemy.Result alchemy) {
+        String alchLine = TradeCopy.alchLine(ironmanActive, alchemy);
+        if (alchLine.isEmpty() || alchemy == null) {
+            clearAlch();
+            return;
+        }
+        if (!ironmanActive && alchemy.profit != null) {
+            setWrap(lblHaAlch, String.format("High Alch: %,d gp", alchemy.haValue));
+            lblHaAlch.setForeground(NEUTRAL);
+            lblHaAlch.setVisible(true);
+            String profit = alchemy.profit >= 0
+                ? String.format("Profit: +%,d gp", alchemy.profit)
+                : String.format("Profit: %,d gp", alchemy.profit);
+            setWrap(lblAlchProfit, profit);
+            lblAlchProfit.setForeground(alchemy.profit >= 0 ? GOOD : BAD);
+            lblAlchProfit.setVisible(true);
+            return;
+        }
+        setWrap(lblHaAlch, alchLine);
+        lblHaAlch.setForeground(ironmanActive ? GOLD : NEUTRAL);
+        lblHaAlch.setVisible(true);
+        lblAlchProfit.setVisible(false);
     }
 
     private void updatePriceNote() {
@@ -1388,8 +1510,8 @@ public class JEIPanel extends PluginPanel {
         equipmentSection.setVisible(false);
         shopsSection.setVisible(false);
         recipeSection.setVisible(false);
-        usedInButton.setVisible(false);
-        dropsButton.setVisible(false);
+        usedInSection.setVisible(false);
+        dropsSection.setVisible(false);
     }
 
     private void fillEmptyNotes(ItemDetails details) {
@@ -1437,7 +1559,7 @@ public class JEIPanel extends PluginPanel {
         }
         OwnedItems.Snapshot snapshot = ownedSnapshot == null ? OwnedItems.Snapshot.NONE : ownedSnapshot;
         long have = snapshot.count(shownItem.id);
-        lblOwned.setText(OwnedText.header(snapshot.inventoryKnown(), snapshot.bankKnown(), have));
+        setWrap(lblOwned, OwnedText.header(snapshot.inventoryKnown(), snapshot.bankKnown(), have));
         lblOwned.setVisible(true);
         lblOwned.setForeground(snapshot.inventoryKnown() && snapshot.bankKnown() ? NEUTRAL : MUTED);
         lblOwned.setToolTipText(snapshot.bankKnown()
@@ -1446,38 +1568,7 @@ public class JEIPanel extends PluginPanel {
     }
 
     private void updateMarket() {
-        if (lblMarket == null) {
-            return;
-        }
-        if (!config.showPrices() || !pricesFetched || shownItem == null || priceUnavailable) {
-            lblMarket.setText(" ");
-            lblMarket.setVisible(false);
-            return;
-        }
-        boolean ready = shownLimits != null && shownLimits.fetchedAt() > 0L;
-        boolean limitsUnavailable = !ready && limitsHoldoff;
-        Integer limit = ready ? shownLimits.limit(shownItem.id) : null;
-        MarketQuote quote = MarketQuote.describe(
-            ironmanActive, shownItem.id, shownPrice, limit, ready, limitsUnavailable);
-        if (quote.text.isEmpty()) {
-            lblMarket.setVisible(false);
-            return;
-        }
-        lblMarket.setHtml(escape(quote.text));
-        if (ironmanActive) {
-            lblMarket.setForeground(MUTED);
-            lblMarket.setToolTipText("Grand Exchange figures are a reference only.");
-        } else if (quote.marginSign > 0) {
-            lblMarket.setForeground(GOOD);
-            lblMarket.setToolTipText("Margin after the 2% GE tax, capped at 5m per item.");
-        } else if (quote.marginSign < 0) {
-            lblMarket.setForeground(BAD);
-            lblMarket.setToolTipText("Margin after the 2% GE tax, capped at 5m per item.");
-        } else {
-            lblMarket.setForeground(NEUTRAL);
-            lblMarket.setToolTipText("Buy limit from the wiki price mapping.");
-        }
-        lblMarket.setVisible(true);
+        paintGeBlock();
     }
 
     /** One mapping fetch for the whole session. Skipped unless GE prices are on. */
@@ -1564,6 +1655,7 @@ public class JEIPanel extends PluginPanel {
             return;
         }
         EquipmentStats stats = statsOpt.get();
+        equipmentSection.setTitle(SectionSummaries.equipment(stats.slot, stats.twoHanded()));
         String meta = stats.slot;
         if (stats.speed > 0) {
             meta += "  \u00b7  Speed " + stats.speed;
@@ -1639,7 +1731,7 @@ public class JEIPanel extends PluginPanel {
             }
         });
         equipmentContent.add(toggle);
-        if (!compareOpen) {
+        if (!compareOpen || !equipmentSection.isExpanded()) {
             return;
         }
         if (wornGear == null || !wornGear.loggedIn) {
@@ -1852,13 +1944,18 @@ public class JEIPanel extends PluginPanel {
             shopsSection.setVisible(false);
             return;
         }
+        shopsSection.setTitle(SectionSummaries.shops(visible));
+        shopsSection.setVisible(true);
+        if (!shopsSection.isExpanded()) {
+            return;
+        }
         for (ShopEntry shop : visible) {
             TradeCopy.ShopLine line = TradeCopy.shop(ironmanActive, shop, geBuy);
-            String html = "<font color='#bebebe'>\u00b7 " + escape(shop.shopName) + escape(line.stock) + "</font>"
-                + "<font color='" + line.priceColor + "'>" + escape(line.price) + "</font>";
-            shopsContent.add(htmlLine(html, null, "small"));
+            WrappingLabel row = htmlLine(SectionSummaries.shopHtml(shop, line), null, "small");
+            row.setToolTipText(SectionSummaries.shopPlain(shop, line));
+            row.setBorder(BorderFactory.createEmptyBorder(1, 0, 1, 0));
+            shopsContent.add(row);
         }
-        shopsSection.setVisible(true);
     }
 
     private void populateRecipes(List<com.osr.jei.model.RecipeInfo> recipes) {
@@ -1870,10 +1967,15 @@ public class JEIPanel extends PluginPanel {
         String rootName = shownItem == null ? "" : shownItem.name;
         Integer rootId = shownItem == null ? null : shownItem.id;
         ItemDetails root = shownDetails == null ? ItemDetails.EMPTY : shownDetails;
-        BuildExpander.Result tree = BuildExpander.expandSelected(rootName, rootId, root, viewPages(), expandedPaths);
-        RecipeTreeView.fill(recipeBody, style, tree, !expandedPaths.isEmpty(), treeActions(), ownedCounts(), recipeMarks());
+        recipeSection.setTitle(SectionSummaries.crafting(recipes));
         recipeSection.setVisible(true);
-        if (!tree.pending.isEmpty()) {
+        if (!recipeSection.isExpanded()) {
+            return;
+        }
+        BuildExpander.Result tree = BuildExpander.expandSelected(rootName, rootId, root, viewPages(), expandedPaths);
+        RecipeTreeView.fill(
+            recipeBody, style, tree, !expandedPaths.isEmpty(), treeActions(), ownedCounts(), recipeMarks(), false);
+        if (!fillingSection && !tree.pending.isEmpty()) {
             scheduleTreeLoads(tree.pending);
         }
         if (!treeFailed.isEmpty()) {
@@ -2066,67 +2168,42 @@ public class JEIPanel extends PluginPanel {
     }
 
     private void populateUsedIn(List<String> products) {
+        usedInContent.removeAll();
         List<String> known = knownProducts(products);
         if (known.isEmpty()) {
-            usedInButton.setVisible(false);
-            usedInButton.putClientProperty("products", null);
+            usedInSection.setVisible(false);
             return;
         }
-        usedInButton.putClientProperty("products", known);
-        usedInButton.setText(known.size() == 1
-            ? "Used to craft: 1 item  \u2192"
-            : "Used to craft: " + known.size() + " items  \u2192");
-        usedInButton.setVisible(true);
+        usedInSection.setTitle(SectionSummaries.uses(known));
+        usedInSection.setVisible(true);
+        if (!usedInSection.isExpanded()) {
+            return;
+        }
+        for (String name : known) {
+            usedInContent.add(linkedRow(findByName(name), name, null));
+            usedInContent.add(Box.createRigidArea(new Dimension(0, 2)));
+        }
     }
 
     private void populateDrops(List<DropEntry> drops) {
+        dropsContent.removeAll();
         if (!config.showDropSources() || drops == null || drops.isEmpty()) {
-            dropsButton.setVisible(false);
+            dropsSection.setVisible(false);
             return;
         }
-        dropsButton.setText(drops.size() == 1
-            ? "Dropped by: 1 monster  \u2192"
-            : "Dropped by: " + drops.size() + " monsters  \u2192");
-        dropsButton.setVisible(true);
-    }
-
-    @SuppressWarnings("unchecked")
-    private void showUsedInExpanded() {
-        monsterGeneration.incrementAndGet();
-        usedInListPanel.removeAll();
-        usedInListPanel.add(backToGridButton());
-        usedInListPanel.add(plainLabel("Used to craft:  " + selectedItemName, "title", Color.WHITE));
-        usedInListPanel.add(Box.createRigidArea(new Dimension(0, 6)));
-        Object stored = usedInButton.getClientProperty("products");
-        List<String> products = stored instanceof List ? (List<String>) stored : Collections.emptyList();
-        for (String name : products) {
-            usedInListPanel.add(linkedRow(findByName(name), name, null));
-            usedInListPanel.add(Box.createRigidArea(new Dimension(0, 4)));
+        dropsSection.setTitle(SectionSummaries.drops(drops));
+        dropsSection.setVisible(true);
+        if (!dropsSection.isExpanded()) {
+            return;
         }
-        usedInListPanel.revalidate();
-        usedInListPanel.repaint();
-        gridMode = "usedIn";
-        gridCardLayout.show(gridCardPanel, "usedIn");
-    }
-
-    private void showDropsExpanded() {
-        monsterGeneration.incrementAndGet();
-        usedInListPanel.removeAll();
-        usedInListPanel.add(backToGridButton());
-        usedInListPanel.add(plainLabel("Dropped by:  " + selectedItemName, "title", Color.WHITE));
-        usedInListPanel.add(plainLabel("Click a monster to see its locations", "small", MUTED));
-        usedInListPanel.add(dropSortControl());
-        usedInListPanel.add(Box.createRigidArea(new Dimension(0, 6)));
-        List<DropEntry> drops = shownDetails == null ? Collections.emptyList() : shownDetails.drops;
+        dropsContent.add(plainLabel("Click a monster for its locations", "small", MUTED));
+        dropsContent.add(dropSortControl());
+        dropsContent.add(Box.createRigidArea(new Dimension(0, 4)));
         DropSort sort = config.dropSort() == null ? DropSort.RATE : config.dropSort();
         for (DropEntry drop : DropSorter.ordered(drops, sort)) {
-            usedInListPanel.add(buildDropRow(drop));
-            usedInListPanel.add(Box.createRigidArea(new Dimension(0, 3)));
+            dropsContent.add(buildDropRow(drop));
+            dropsContent.add(Box.createRigidArea(new Dimension(0, 2)));
         }
-        usedInListPanel.revalidate();
-        usedInListPanel.repaint();
-        gridMode = "drops";
-        gridCardLayout.show(gridCardPanel, "usedIn");
     }
 
     private JComboBox<DropSort> dropSortControl() {
@@ -2135,7 +2212,9 @@ public class JEIPanel extends PluginPanel {
         DropSort selected = config.dropSort() == null ? DropSort.RATE : config.dropSort();
         combo.setSelectedItem(selected);
         combo.setAlignmentX(LEFT_ALIGNMENT);
-        combo.setMaximumSize(new Dimension(Integer.MAX_VALUE, combo.getPreferredSize().height));
+        int rowHeight = Math.max(22, combo.getPreferredSize().height);
+        combo.setMinimumSize(new Dimension(0, rowHeight));
+        combo.setMaximumSize(new Dimension(Integer.MAX_VALUE, rowHeight));
         combo.addActionListener(e -> {
             if (syncingFilters) {
                 return;
@@ -2173,10 +2252,10 @@ public class JEIPanel extends PluginPanel {
         row.add(label, BorderLayout.CENTER);
         capHeight(row);
         String monsterName = drop.getSource();
-        row.addMouseListener(new MouseAdapter() {
+        MouseAdapter opener = new MouseAdapter() {
             @Override
             public void mouseClicked(MouseEvent e) {
-                showMonsterDetail(monsterName);
+                toggleMonster(monsterName);
             }
 
             @Override
@@ -2190,69 +2269,122 @@ public class JEIPanel extends PluginPanel {
                 row.setBackground(ColorScheme.DARKER_GRAY_COLOR);
                 row.repaint();
             }
-        });
-        return row;
+        };
+        row.addMouseListener(opener);
+        label.addMouseListener(opener);
+        JPanel block = verticalBox();
+        block.add(row);
+        if (openMonsters.contains(monsterKey(monsterName))) {
+            block.add(locationBody(monsterName));
+        }
+        return block;
     }
 
-    private void showMonsterDetail(String monsterName) {
-        int gen = monsterGeneration.incrementAndGet();
-        usedInListPanel.removeAll();
-        usedInListPanel.add(backToDropsButton());
-        usedInListPanel.add(plainLabel(monsterName, "title", Color.WHITE));
-        usedInListPanel.add(plainLabel("Loading location data\u2026", "small", MUTED));
-        usedInListPanel.revalidate();
-        usedInListPanel.repaint();
-        gridMode = "monster";
-        gridCardLayout.show(gridCardPanel, "usedIn");
-        final String pending = monsterName;
-        wikiHttp.beginRequest();
+    private void toggleMonster(String monsterName) {
+        String key = monsterKey(monsterName);
+        if (!openMonsters.add(key)) {
+            openMonsters.remove(key);
+        } else {
+            ensureMonster(monsterName);
+        }
+        if (shownDetails != null) {
+            populateDrops(shownDetails.drops);
+        }
+    }
+
+    /**
+     * Loads a monster page the first time its row is opened. Later expands
+     * reuse {@link #locationViews} and do not call the wiki.
+     */
+    private void ensureMonster(String monsterName) {
+        String key = monsterKey(monsterName);
+        LocationView view = locationViews.get(key);
+        if (view != null && view.started) {
+            return;
+        }
+        if (view == null) {
+            view = new LocationView();
+            locationViews.put(key, view);
+        }
+        view.started = true;
+        view.loading = true;
+        view.error = null;
+        int gen = monsterGeneration.get();
+        final LocationView pending = view;
         monsterService.getMonsterInfo(monsterName).whenComplete((info, error) -> SwingUtilities.invokeLater(() -> {
-            if (gen != monsterGeneration.get()) {
+            if (gen != monsterGeneration.get() || closed) {
                 return;
             }
+            pending.loading = false;
             if (error != null) {
-                if (!(unwrap(error) instanceof RequestCancelledException)) {
-                    populateMonsterDetail(pending, Optional.empty(), WikiFailures.monster(unwrap(error)));
+                if (unwrap(error) instanceof RequestCancelledException) {
+                    pending.started = false;
+                    return;
                 }
-                return;
+                pending.error = WikiFailures.monster(unwrap(error));
+                pending.info = Optional.empty();
+            } else {
+                pending.error = null;
+                pending.info = info == null ? Optional.empty() : info;
             }
-            populateMonsterDetail(pending, info, null);
+            if (shownDetails != null && dropsSection != null && dropsSection.isVisible()) {
+                populateDrops(shownDetails.drops);
+            }
         }));
     }
 
-    private void populateMonsterDetail(String monsterName, Optional<MonsterInfo> infoOpt, String error) {
-        usedInListPanel.removeAll();
-        usedInListPanel.add(backToDropsButton());
-        String header = monsterName;
-        if (infoOpt.isPresent() && infoOpt.get().combatLevel > 0) {
-            header = monsterName + "  (Lv. " + infoOpt.get().combatLevel + ")";
+    private JComponent locationBody(String monsterName) {
+        String key = monsterKey(monsterName);
+        LocationView view = locationViews.get(key);
+        if (view == null || view.loading || !view.started) {
+            if (view == null || !view.started) {
+                ensureMonster(monsterName);
+            }
+            return plainLabel("Loading location data\u2026", "small", MUTED);
         }
-        usedInListPanel.add(plainLabel(header, "title", Color.WHITE));
-        usedInListPanel.add(Box.createRigidArea(new Dimension(0, 6)));
-        if (error != null) {
-            usedInListPanel.add(noteLabel(error));
+        if (view.error != null) {
+            JPanel box = verticalBox();
+            box.add(noteLabel(view.error));
             JButton retry = linkButton("Retry", "small");
             retry.setForeground(LINK);
             retry.addActionListener(e -> {
+                locationViews.remove(key);
                 monsterService.retry(monsterName);
-                showMonsterDetail(monsterName);
+                openMonsters.add(key);
+                ensureMonster(monsterName);
+                if (shownDetails != null) {
+                    populateDrops(shownDetails.drops);
+                }
             });
-            usedInListPanel.add(retry);
-        } else if (infoOpt.isPresent() && !infoOpt.get().locations.isEmpty()) {
-            usedInListPanel.add(plainLabel("Locations", "bodyBold", ColorScheme.LIGHT_GRAY_COLOR));
-            for (String location : infoOpt.get().locations) {
-                usedInListPanel.add(htmlLine("\u00b7 " + escape(location), "#c8c8c8", "small"));
-            }
-        } else {
-            usedInListPanel.add(plainLabel("No locations are listed for this monster.", "small", MUTED));
+            box.add(retry);
+            return box;
         }
-        usedInListPanel.add(Box.createRigidArea(new Dimension(0, 8)));
+        MonsterInfo info = view.info == null ? null : view.info.orElse(null);
+        JPanel box = verticalBox();
+        if (info != null && info.combatLevel > 0) {
+            box.add(plainLabel("Combat " + info.combatLevel, "small", MUTED));
+        }
+        if (info == null || info.locations == null || info.locations.isEmpty()) {
+            box.add(plainLabel("No locations are listed for this monster.", "small", MUTED));
+        } else {
+            CollapsibleSection locations = new CollapsibleSection(SectionState.LOCATIONS, sectionState, style);
+            locations.setTitle(SectionSummaries.locations(info.locations));
+            for (String place : info.locations) {
+                WrappingLabel line = htmlLine("\u00b7 " + escape(place), "#c8c8c8", "small");
+                line.setToolTipText(place);
+                locations.body().add(line);
+            }
+            box.add(locations);
+        }
         JButton wiki = linkButton("Open Wiki page", "button");
         wiki.setForeground(LINK);
         wiki.addActionListener(e -> openWiki(monsterName));
-        usedInListPanel.add(wiki);
-        usedInListPanel.revalidate();
-        usedInListPanel.repaint();
+        box.add(wiki);
+        return box;
+    }
+
+    private static String monsterKey(String name) {
+        return name == null ? "" : name.trim().toLowerCase(Locale.ROOT);
     }
 
     private void navigateTo(SearchItem target) {
@@ -2263,7 +2395,6 @@ public class JEIPanel extends PluginPanel {
             }
         }
         backButton.setVisible(true);
-        showGridCard();
         loadItemDetail(target, true);
     }
 
@@ -2273,15 +2404,7 @@ public class JEIPanel extends PluginPanel {
         }
         SearchItem prev = navStack.pop();
         backButton.setVisible(!navStack.isEmpty());
-        showGridCard();
         loadItemDetail(prev, false);
-    }
-
-    private void showGridCard() {
-        gridMode = "grid";
-        if (gridCardLayout != null) {
-            gridCardLayout.show(gridCardPanel, "grid");
-        }
     }
 
     private JPanel buildHistoryBar() {
@@ -2348,7 +2471,6 @@ public class JEIPanel extends PluginPanel {
             public void mouseClicked(MouseEvent e) {
                 navStack.clear();
                 backButton.setVisible(false);
-                showGridCard();
                 loadItemDetail(item, true);
             }
 
@@ -2510,34 +2632,50 @@ public class JEIPanel extends PluginPanel {
         return pane;
     }
 
-    private JPanel section(String title) {
-        JPanel panel = verticalBox();
-        panel.setVisible(false);
-        JLabel header = plainLabel(title, "bodyBold", Color.WHITE);
-        panel.add(header);
-        panel.add(Box.createRigidArea(new Dimension(0, 3)));
-        return panel;
+    private void queueReflow() {
+        if (reflowQueued || closed) {
+            return;
+        }
+        reflowQueued = true;
+        SwingUtilities.invokeLater(() -> {
+            reflowQueued = false;
+            if (closed || detailPanel == null) {
+                return;
+            }
+            int width = detailPanel.getParent() instanceof javax.swing.JViewport
+                ? detailPanel.getParent().getWidth()
+                : getWidth();
+            if (width <= 0 || Math.abs(width - lastWrapWidth) < 2) {
+                return;
+            }
+            lastWrapWidth = width;
+            detailPanel.revalidate();
+        });
+    }
+
+    private static void setWrap(WrappingLabel label, String plain) {
+        if (label == null) {
+            return;
+        }
+        String text = plain == null ? "" : plain;
+        label.setHtml(escape(text));
+        label.setToolTipText(text.isEmpty() ? null : text);
     }
 
     private JPanel verticalBox() {
-        JPanel panel = new JPanel() {
-            @Override
-            public Dimension getMaximumSize() {
-                Dimension preferred = getPreferredSize();
-                return new Dimension(Integer.MAX_VALUE, preferred.height);
-            }
-        };
-        panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
+        ScrollWidthPanel panel = new ScrollWidthPanel();
         panel.setBackground(ColorScheme.DARKER_GRAY_COLOR);
+        panel.setOpaque(true);
         panel.setAlignmentX(LEFT_ALIGNMENT);
         return panel;
     }
 
     private JLabel plainLabel(String text, String role, Color color) {
-        JLabel label = new JLabel(text);
+        WrappingLabel label = new WrappingLabel();
         style.apply(label, role);
         label.setForeground(color);
         label.setAlignmentX(LEFT_ALIGNMENT);
+        setWrap(label, text);
         return label;
     }
 
@@ -2550,7 +2688,7 @@ public class JEIPanel extends PluginPanel {
     }
 
     private JButton linkButton(String text, String role) {
-        JButton button = new JButton(text);
+        JButton button = new WrappingButton(text);
         style.apply(button, role);
         button.setBackground(ColorScheme.DARKER_GRAY_COLOR);
         button.setOpaque(false);
@@ -2560,20 +2698,7 @@ public class JEIPanel extends PluginPanel {
         button.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
         button.setAlignmentX(LEFT_ALIGNMENT);
         button.setHorizontalAlignment(SwingConstants.LEFT);
-        return button;
-    }
-
-    private JButton backToGridButton() {
-        JButton button = linkButton("\u2190 Back to results", "button");
-        button.setForeground(LINK);
-        button.addActionListener(e -> showGridCard());
-        return button;
-    }
-
-    private JButton backToDropsButton() {
-        JButton button = linkButton("\u2190 Back to drops", "button");
-        button.setForeground(LINK);
-        button.addActionListener(e -> showDropsExpanded());
+        button.setMargin(new Insets(0, 0, 0, 0));
         return button;
     }
 
@@ -2596,14 +2721,11 @@ public class JEIPanel extends PluginPanel {
                 img.addTo(icon);
             }
         }
-        String html = secondary == null || secondary.isEmpty()
-            ? escape(text)
-            : escape(text) + "<br><font color='#999999'>" + escape(secondary) + "</font>";
-        WrappingLabel label = new WrappingLabel();
+        EllipsisLabel label = new EllipsisLabel();
         style.apply(label, "small");
-        label.setHtml(html);
+        Color nameColor = target != null ? LINK : ColorScheme.LIGHT_GRAY_COLOR;
+        label.setPieces(text, nameColor, secondary, MUTED);
         if (target != null) {
-            label.setForeground(LINK);
             row.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
             MouseAdapter handler = new MouseAdapter() {
                 @Override
@@ -2701,5 +2823,13 @@ public class JEIPanel extends PluginPanel {
             thread.setDaemon(true);
             return thread;
         };
+    }
+
+    /** Parsed monster locations for the open item. Expanding a row reads this and does not fetch again. */
+    private static final class LocationView {
+        private boolean started;
+        private boolean loading;
+        private String error;
+        private Optional<MonsterInfo> info = Optional.empty();
     }
 }

@@ -91,9 +91,24 @@ public class GeLimitsTest {
             "Instant sell: 1,100 gp \u00b7 margin 78 gp after tax \u00b7 limit 10 \u00b7 per 4h 780 gp",
             normal.text);
         assertEquals(1, normal.marginSign);
+        assertEquals(4, normal.lines.size());
+        assertEquals("Instant sell", normal.lines.get(0).key);
+        assertEquals("1,100 gp", normal.lines.get(0).value);
+        assertEquals("Margin", normal.lines.get(1).key);
+        assertEquals("78 gp after tax", normal.lines.get(1).value);
+        assertEquals(1, normal.lines.get(1).tone);
+        assertEquals("Limit", normal.lines.get(2).key);
+        assertEquals("10", normal.lines.get(2).value);
+        assertEquals("Per 4h", normal.lines.get(3).key);
+        assertEquals("780 gp", normal.lines.get(3).value);
+        for (MarketQuote.Line line : normal.lines) {
+            assertFalse(line.value.contains("\u00b7"));
+        }
 
         MarketQuote iron = MarketQuote.describe(true, ItemID.NATURERUNE, quote, 10, true);
         assertTrue(iron.text.startsWith("Reference only"));
+        assertEquals("Reference only", iron.lines.get(0).value);
+        assertEquals("", iron.lines.get(0).key);
         assertFalse(iron.text.contains("GE buy"));
         assertTrue(iron.text.contains("margin 78 gp after tax"));
 
