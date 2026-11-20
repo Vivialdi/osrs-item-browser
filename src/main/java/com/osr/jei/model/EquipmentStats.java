@@ -57,13 +57,4 @@ public class EquipmentStats {
         this.slot        = slot;
         this.speed       = speed;
     }
-
-    /** True if every attack and defence bonus is zero (e.g. non-combat items). */
-    public boolean allZero() {
-        return attackStab == 0 && attackSlash == 0 && attackCrush == 0
-            && attackMagic == 0 && attackRange == 0
-            && defStab == 0 && defSlash == 0 && defCrush == 0
-            && defMagic == 0 && defRange == 0
-            && meleeStr == 0 && rangedStr == 0 && magicDmg == 0 && prayer == 0;
-    }
 }

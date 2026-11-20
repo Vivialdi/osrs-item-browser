@@ -1,16 +1,28 @@
 package com.osr.jei;
 
+import com.osr.jei.ui.FontFamilyChoice;
+import com.osr.jei.ui.FontStyleChoice;
 import net.runelite.client.config.Config;
 import net.runelite.client.config.ConfigGroup;
 import net.runelite.client.config.ConfigItem;
+import net.runelite.client.config.ConfigSection;
+import net.runelite.client.config.Range;
 
 @ConfigGroup("osrjei")
 public interface JEIConfig extends Config {
+
+    @ConfigSection(
+        name = "Display",
+        description = "Font and how the sidebar splits search results from item details",
+        position = 0
+    )
+    String display = "display";
 
     @ConfigItem(
         keyName = "showPrices",
         name = "Show GE Prices",
         description = "Fetch and display Grand Exchange prices",
+        warning = "This feature submits your IP address to a 3rd-party server not controlled or verified by RuneLite developers",
         position = 1
     )
     default boolean showPrices() {
@@ -20,10 +32,56 @@ public interface JEIConfig extends Config {
     @ConfigItem(
         keyName = "showDropSources",
         name = "Show Drop Sources",
-        description = "Fetch and display which monsters drop the selected item",
+        description = "Show which monsters drop the selected item",
         position = 2
     )
     default boolean showDropSources() {
         return true;
+    }
+
+    @ConfigItem(
+        keyName = "fontSize",
+        name = "Font size",
+        description = "Base size of text in the sidebar",
+        section = "display",
+        position = 3
+    )
+    @Range(min = 10, max = 22)
+    default int fontSize() {
+        return 12;
+    }
+
+    @ConfigItem(
+        keyName = "fontStyle",
+        name = "Font style",
+        description = "Regular or bold text",
+        section = "display",
+        position = 4
+    )
+    default FontStyleChoice fontStyle() {
+        return FontStyleChoice.REGULAR;
+    }
+
+    @ConfigItem(
+        keyName = "fontFamily",
+        name = "Font",
+        description = "RuneLite's interface font, or a standard Java family",
+        section = "display",
+        position = 5
+    )
+    default FontFamilyChoice fontFamily() {
+        return FontFamilyChoice.DEFAULT;
+    }
+
+    @ConfigItem(
+        keyName = "detailRatio",
+        name = "Detail pane share",
+        description = "Percentage of the sidebar height used by the item detail pane",
+        section = "display",
+        position = 6
+    )
+    @Range(min = 25, max = 75)
+    default int detailRatio() {
+        return 45;
     }
 }
