@@ -7,6 +7,7 @@ import com.osr.jei.model.RecipeIngredient;
 import com.osr.jei.model.ShopEntry;
 import com.osr.jei.pricing.MarketQuote;
 import com.osr.jei.pricing.PriceQuote;
+import com.osr.jei.search.SearchCriteria;
 import com.osr.jei.service.ItemDetails;
 import net.runelite.client.ui.ColorScheme;
 import net.runelite.client.ui.PluginPanel;
@@ -120,10 +121,14 @@ public class DetailPaneLayoutTest {
     public void sidebarFillsWidthAndDropsTheEmptyResultsGap() throws Exception {
         SwingUtilities.invokeAndWait(() -> {
             try {
-                Render empty = sidebar(PluginPanel.PANEL_WIDTH, false);
-                Render wideEmpty = sidebar(350, false);
-                Render results = sidebar(PluginPanel.PANEL_WIDTH, true);
-                Render wideResults = sidebar(350, true);
+                Render empty = sidebar(230, false, true);
+                Render noFav = sidebar(230, false, false);
+                Render wideEmpty = sidebar(300, false, true);
+                Render results = sidebar(230, true, true);
+                Render wideResults = sidebar(300, true, false);
+                assertFiltersReadable(empty.detail);
+                assertFiltersReadable(noFav.detail);
+                assertFiltersReadable(wideEmpty.detail);
                 assertTrue(empty.detail.getHeight() < 420);
                 assertTrue(wideEmpty.detail.getHeight() < 420);
                 assertNoOverflow(empty);
@@ -137,10 +142,11 @@ public class DetailPaneLayoutTest {
                 }
                 assertTrue("icons should fill the row, right=" + right + " width=" + resultGrid.getWidth(),
                     right > resultGrid.getWidth() - 40);
-                write(empty.image, "sidebar-empty-225.png");
-                write(wideEmpty.image, "sidebar-empty-350.png");
-                write(results.image, "sidebar-results-225.png");
-                write(wideResults.image, "sidebar-results-350.png");
+                write(empty.image, "sidebar-empty-230.png");
+                write(noFav.image, "sidebar-empty-230-nofav.png");
+                write(wideEmpty.image, "sidebar-empty-300.png");
+                write(results.image, "sidebar-results-230.png");
+                write(wideResults.image, "sidebar-results-300.png");
             } catch (Exception e) {
                 throw new RuntimeException(e);
             }
@@ -253,12 +259,46 @@ public class DetailPaneLayoutTest {
         return null;
     }
 
-    private static Render sidebar(int width, boolean results) {
+    private static void assertFiltersReadable(JComponent root) {
+        int combos = 0;
+        for (JComboBox<?> combo : findCombos(root)) {
+            combos++;
+            Object selected = combo.getSelectedItem();
+            String text = selected == null ? "" : selected.toString();
+            int textWidth = combo.getFontMetrics(combo.getFont()).stringWidth(text);
+            assertTrue(text + " is clipped in a " + combo.getWidth() + "px combo",
+                combo.getWidth() >= textWidth + 28);
+            Point at = SwingUtilities.convertPoint(combo.getParent(), combo.getX(), combo.getY(), root);
+            assertTrue("filter sits away from the left edge at x=" + at.x, at.x < 80);
+            assertTrue("filter does not reach the row", at.x + combo.getWidth() > root.getWidth() - 24);
+        }
+        assertEquals(4, combos);
+    }
+
+    private static java.util.List<JComboBox<?>> findCombos(Component component) {
+        java.util.List<JComboBox<?>> found = new ArrayList<>();
+        if (component instanceof JComboBox) {
+            found.add((JComboBox<?>) component);
+        }
+        if (component instanceof Container) {
+            for (Component child : ((Container) component).getComponents()) {
+                found.addAll(findCombos(child));
+            }
+        }
+        return found;
+    }
+
+    private static Render sidebar(int width, boolean results, boolean favourites) {
         JPanel panel = new JPanel();
         panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
         panel.setBackground(ColorScheme.DARK_GRAY_COLOR);
         panel.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
-        JPanel search = new JPanel(new java.awt.BorderLayout(4, 0));
+        JPanel search = new JPanel(new java.awt.BorderLayout()) {
+            @Override
+            public Dimension getMaximumSize() {
+                return new Dimension(Integer.MAX_VALUE, getPreferredSize().height);
+            }
+        };
         search.setOpaque(false);
         search.setAlignmentX(0f);
         JLabel field = new JLabel(results ? "  air rune" : "  Search");
@@ -267,20 +307,31 @@ public class DetailPaneLayoutTest {
         field.setForeground(Color.WHITE);
         field.setPreferredSize(new Dimension(40, 28));
         search.add(field, java.awt.BorderLayout.CENTER);
-        search.add(new StarButton("Show favourites"), java.awt.BorderLayout.EAST);
-        search.setMaximumSize(new Dimension(Integer.MAX_VALUE, 28));
         panel.add(search);
         panel.add(Box.createRigidArea(new Dimension(0, 4)));
-        JPanel filters = new JPanel(new java.awt.GridLayout(2, 2, 4, 3));
-        filters.setOpaque(false);
-        filters.setAlignmentX(0f);
-        filters.add(new JComboBox<>(new String[]{"Any trade"}));
-        filters.add(new JComboBox<>(new String[]{"Any world"}));
-        filters.add(new JComboBox<>(new String[]{"Any item"}));
-        filters.add(new JComboBox<>(new String[]{"Any slot"}));
-        filters.setMaximumSize(new Dimension(Integer.MAX_VALUE, 52));
-        panel.add(filters);
-        panel.add(iconStrip("Favourites", 4));
+        JComboBox<SearchCriteria.Trade> trade = new JComboBox<>(SearchCriteria.Trade.values());
+        JComboBox<SearchCriteria.Members> world = new JComboBox<>(SearchCriteria.Members.values());
+        JComboBox<SearchCriteria.Equip> item = new JComboBox<>(SearchCriteria.Equip.values());
+        JComboBox<SearchCriteria.SlotChoice> slot = new JComboBox<>(SearchCriteria.SlotChoice.values());
+        JPanel filters = LabeledFilters.column(
+            null,
+            MUTED,
+            new String[]{"Trade", "World", "Item", "Slot"},
+            new JComponent[]{trade, world, item, slot}
+        );
+        JPanel filterRow = new JPanel(new java.awt.BorderLayout()) {
+            @Override
+            public Dimension getMaximumSize() {
+                return new Dimension(Integer.MAX_VALUE, getPreferredSize().height);
+            }
+        };
+        filterRow.setOpaque(false);
+        filterRow.setAlignmentX(0f);
+        filterRow.add(filters, java.awt.BorderLayout.CENTER);
+        panel.add(filterRow);
+        if (favourites) {
+            panel.add(iconStrip("Favourites", 4));
+        }
         panel.add(iconStrip("Recent", 8));
         if (results) {
             panel.add(Box.createRigidArea(new Dimension(0, 6)));

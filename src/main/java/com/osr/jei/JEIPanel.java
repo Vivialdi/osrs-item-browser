@@ -43,6 +43,7 @@ import com.osr.jei.map.MapMarkers;
 import com.osr.jei.ui.CollapsibleSection;
 import com.osr.jei.ui.EllipsisLabel;
 import com.osr.jei.ui.IconGridPanel;
+import com.osr.jei.ui.LabeledFilters;
 import com.osr.jei.ui.RecipeTreeView;
 import com.osr.jei.ui.ShopRows;
 import com.osr.jei.ui.StarButton;
@@ -85,7 +86,8 @@ import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.JSeparator;
 import javax.swing.JSplitPane;
-import javax.swing.JToggleButton;
+import javax.swing.JMenuItem;
+import javax.swing.JPopupMenu;
 import javax.swing.ScrollPaneConstants;
 import javax.swing.SwingConstants;
 import javax.swing.SwingUtilities;
@@ -95,7 +97,6 @@ import javax.swing.plaf.basic.BasicSplitPaneDivider;
 import javax.swing.plaf.basic.BasicSplitPaneUI;
 import java.awt.BorderLayout;
 import java.awt.Color;
-import java.awt.GridLayout;
 import java.awt.Component;
 import java.awt.Cursor;
 import java.awt.Dimension;
@@ -205,7 +206,6 @@ public class JEIPanel extends PluginPanel {
     private IconGridPanel favouriteIcons;
     private JPanel historyIcons;
     private JLabel indexStatus;
-    private StarButton favToggle;
     private JButton backButton;
     private StarButton starButton;
     private JButton wikiButton;
@@ -301,6 +301,7 @@ public class JEIPanel extends PluginPanel {
         JPanel north = new JPanel();
         north.setLayout(new BoxLayout(north, BoxLayout.Y_AXIS));
         north.setBackground(ColorScheme.DARK_GRAY_COLOR);
+        north.setAlignmentX(LEFT_ALIGNMENT);
         north.add(buildSearchBar());
         north.add(buildFilterBar());
         north.add(indexStatus);
@@ -582,48 +583,37 @@ public class JEIPanel extends PluginPanel {
             @Override public void changedUpdate(DocumentEvent e) { onSearch(searchBar.getText()); }
         });
 
-        favToggle = new StarButton("Show favourites in the results");
-        favToggle.addActionListener(e -> {
-            if (favToggle.isSelected()) {
-                favToggle.setToolTipText("Show the search results");
-                lastGridItems = buildFavouritesList();
-                populateGrid(lastGridItems);
-                showResultGrid(true);
-            } else {
-                favToggle.setToolTipText("Show favourites in the results");
-                onSearch(lastSearchQuery);
-            }
-        });
-
-        JPanel row = new JPanel(new BorderLayout(4, 0));
-        row.setBackground(ColorScheme.DARK_GRAY_COLOR);
+        JPanel row = fullWidthRow();
         row.add(searchBar, BorderLayout.CENTER);
-        row.add(favToggle, BorderLayout.EAST);
         return row;
     }
 
     private JPanel buildFilterBar() {
-        JPanel bar = new JPanel(new GridLayout(2, 2, 4, 3)) {
-            @Override
-            public Dimension getPreferredSize() {
-                int width = getWidth();
-                if (width <= 0 && getParent() != null) {
-                    width = getParent().getWidth();
-                }
-                if (width <= 0) {
-                    width = PANEL_WIDTH - 16;
-                }
-                int rowHeight = 22;
-                for (Component child : getComponents()) {
-                    rowHeight = Math.max(rowHeight, child.getPreferredSize().height);
-                }
-                return new Dimension(width, rowHeight * 2 + 3);
-            }
+        tradeCombo = filterCombo(SearchCriteria.Trade.values(), config.filterTradeable(), "filterTradeable",
+            "Tradeable, untradeable, or both");
+        membersCombo = filterCombo(SearchCriteria.Members.values(), config.filterMembers(), "filterMembers",
+            "Members, free-to-play, or both");
+        equipCombo = filterCombo(SearchCriteria.Equip.values(), config.filterEquipable(), "filterEquipable",
+            "Items that can be equipped, or any item");
+        slotCombo = filterCombo(SearchCriteria.SlotChoice.values(), config.filterSlot(), "filterSlot",
+            "One equipment slot, or any slot");
+        JPanel filters = LabeledFilters.column(
+            style.forRole("small"),
+            MUTED,
+            new String[]{"Trade", "World", "Item", "Slot"},
+            new JComponent[]{tradeCombo, membersCombo, equipCombo, slotCombo}
+        );
+        JPanel row = fullWidthRow();
+        row.add(filters, BorderLayout.CENTER);
+        return row;
+    }
 
+    /** BoxLayout child that fills the sidebar width and stays left-aligned. */
+    private JPanel fullWidthRow() {
+        JPanel row = new JPanel(new BorderLayout()) {
             @Override
             public Dimension getMaximumSize() {
-                Dimension preferred = getPreferredSize();
-                return new Dimension(Integer.MAX_VALUE, preferred.height);
+                return new Dimension(Integer.MAX_VALUE, getPreferredSize().height);
             }
 
             @Override
@@ -631,23 +621,17 @@ public class JEIPanel extends PluginPanel {
                 return new Dimension(0, getPreferredSize().height);
             }
         };
-        bar.setBackground(ColorScheme.DARK_GRAY_COLOR);
-        bar.setAlignmentX(LEFT_ALIGNMENT);
-        tradeCombo = filterCombo(SearchCriteria.Trade.values(), config.filterTradeable(), "filterTradeable");
-        membersCombo = filterCombo(SearchCriteria.Members.values(), config.filterMembers(), "filterMembers");
-        equipCombo = filterCombo(SearchCriteria.Equip.values(), config.filterEquipable(), "filterEquipable");
-        slotCombo = filterCombo(SearchCriteria.SlotChoice.values(), config.filterSlot(), "filterSlot");
-        bar.add(tradeCombo);
-        bar.add(membersCombo);
-        bar.add(equipCombo);
-        bar.add(slotCombo);
-        return bar;
+        row.setBackground(ColorScheme.DARK_GRAY_COLOR);
+        row.setAlignmentX(LEFT_ALIGNMENT);
+        return row;
     }
 
-    private <E> JComboBox<E> filterCombo(E[] values, E selected, String key) {
+    private <E> JComboBox<E> filterCombo(E[] values, E selected, String key, String tip) {
         JComboBox<E> combo = new JComboBox<>(values);
         style.apply(combo, "small");
         combo.setSelectedItem(selected == null ? values[0] : selected);
+        combo.setToolTipText(tip);
+        combo.setMinimumSize(new Dimension(0, combo.getPreferredSize().height));
         combo.addActionListener(e -> {
             if (syncingFilters) {
                 return;
@@ -689,11 +673,6 @@ public class JEIPanel extends PluginPanel {
     }
 
     private void refreshFilteredResults() {
-        if (favToggle != null && favToggle.isSelected()) {
-            lastGridItems = buildFavouritesList();
-            populateGrid(lastGridItems);
-            return;
-        }
         if (lastSearchQuery != null && !lastSearchQuery.isEmpty()) {
             onSearch(lastSearchQuery);
         }
@@ -991,10 +970,6 @@ public class JEIPanel extends PluginPanel {
             SwingUtilities.invokeLater(() -> onSearch(query));
             return;
         }
-        if (favToggle != null && favToggle.isSelected() && query != null && !query.trim().isEmpty()) {
-            favToggle.setSelected(false);
-            favToggle.setToolTipText("Show favourites in the results");
-        }
         if (query == null || query.trim().length() < 2) {
             lastSearchQuery = "";
             searchGeneration.incrementAndGet();
@@ -1038,8 +1013,6 @@ public class JEIPanel extends PluginPanel {
             String text;
             if (!indexPopulated) {
                 text = "The item list is still loading.";
-            } else if (favToggle != null && favToggle.isSelected()) {
-                text = "No favourites yet.";
             } else {
                 text = "No items match that search.";
             }
@@ -1053,7 +1026,7 @@ public class JEIPanel extends PluginPanel {
         gridPanel.revalidate();
         gridPanel.repaint();
         boolean searching = lastSearchQuery != null && lastSearchQuery.length() >= 2;
-        showResultGrid(searching || (favToggle != null && favToggle.isSelected()));
+        showResultGrid(searching);
     }
 
     private void showResultGrid(boolean show) {
@@ -1105,7 +1078,20 @@ public class JEIPanel extends PluginPanel {
         cell.add(iconLabel, BorderLayout.CENTER);
         cell.addMouseListener(new MouseAdapter() {
             @Override
+            public void mousePressed(MouseEvent e) {
+                showFavouriteMenu(e, cell, item);
+            }
+
+            @Override
+            public void mouseReleased(MouseEvent e) {
+                showFavouriteMenu(e, cell, item);
+            }
+
+            @Override
             public void mouseClicked(MouseEvent e) {
+                if (e.getButton() != MouseEvent.BUTTON1) {
+                    return;
+                }
                 if (selectedCell != null) {
                     paintCell(selectedCell, false);
                 }
@@ -1152,7 +1138,15 @@ public class JEIPanel extends PluginPanel {
                 paintCell((JPanel) component, component == selectedCell);
             }
         }
-        for (Component component : historyIcons.getComponents()) {
+        markFavouriteBorders(historyIcons);
+        markFavouriteBorders(favouriteIcons);
+    }
+
+    private void markFavouriteBorders(JPanel icons) {
+        if (icons == null) {
+            return;
+        }
+        for (Component component : icons.getComponents()) {
             if (component instanceof JPanel) {
                 JPanel cell = (JPanel) component;
                 Object id = cell.getClientProperty("itemId");
@@ -2574,11 +2568,13 @@ public class JEIPanel extends PluginPanel {
         bar.setBackground(ColorScheme.DARK_GRAY_COLOR);
         bar.setVisible(favourites);
         bar.setAlignmentX(LEFT_ALIGNMENT);
+        bar.setBorder(BorderFactory.createEmptyBorder(6, 0, 0, 0));
         JLabel label = plainLabel(title, "small", MUTED);
+        label.setBorder(BorderFactory.createEmptyBorder(0, 0, 2, 0));
         IconGridPanel icons = new IconGridPanel(32, 4);
         icons.setBackground(ColorScheme.DARK_GRAY_COLOR);
+        icons.setAlignmentX(LEFT_ALIGNMENT);
         bar.putClientProperty("icons", icons);
-        bar.add(Box.createRigidArea(new Dimension(0, 3)));
         bar.add(label);
         bar.add(icons);
         if (favourites) {
@@ -2656,7 +2652,20 @@ public class JEIPanel extends PluginPanel {
         cell.add(icon, BorderLayout.CENTER);
         cell.addMouseListener(new MouseAdapter() {
             @Override
+            public void mousePressed(MouseEvent e) {
+                showFavouriteMenu(e, cell, item);
+            }
+
+            @Override
+            public void mouseReleased(MouseEvent e) {
+                showFavouriteMenu(e, cell, item);
+            }
+
+            @Override
             public void mouseClicked(MouseEvent e) {
+                if (e.getButton() != MouseEvent.BUTTON1) {
+                    return;
+                }
                 navStack.clear();
                 backButton.setVisible(false);
                 loadItemDetail(item, true);
@@ -2714,10 +2723,18 @@ public class JEIPanel extends PluginPanel {
         saveFavourites();
         refreshFavouriteMarkers();
         rebuildFavourites();
-        if (favToggle != null && favToggle.isSelected()) {
-            lastGridItems = buildFavouritesList();
-            populateGrid(lastGridItems);
+    }
+
+    private void showFavouriteMenu(MouseEvent event, Component source, SearchItem item) {
+        if (!event.isPopupTrigger()) {
+            return;
         }
+        JPopupMenu menu = new JPopupMenu();
+        boolean favourite = isFavourite(item.id);
+        JMenuItem choice = new JMenuItem(favourite ? "Remove from favourites" : "Add to favourites");
+        choice.addActionListener(e -> toggleFavourite(item));
+        menu.add(choice);
+        menu.show(source, event.getX(), event.getY());
     }
 
     private void updateStarButton(SearchItem item) {
