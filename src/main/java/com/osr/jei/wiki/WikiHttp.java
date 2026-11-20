@@ -1,6 +1,7 @@
 package com.osr.jei.wiki;
 
 import com.google.gson.Gson;
+import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import lombok.extern.slf4j.Slf4j;
 import okhttp3.Call;
@@ -45,8 +46,12 @@ public class WikiHttp {
         return thread;
     });
     private final Set<Call> calls = ConcurrentHashMap.newKeySet();
+    private final Set<Call> stableCalls = ConcurrentHashMap.newKeySet();
     private final Set<ScheduledFuture<?>> pendingRetries = ConcurrentHashMap.newKeySet();
+    private final Set<ScheduledFuture<?>> stableRetries = ConcurrentHashMap.newKeySet();
     private final AtomicInteger epoch = new AtomicInteger();
+    /** Bumped only on shutdown, so a session-long fetch survives item changes. */
+    private final AtomicInteger lifetime = new AtomicInteger();
 
     @Inject
     public WikiHttp(OkHttpClient okHttpClient, Gson gson) {
@@ -54,29 +59,52 @@ public class WikiHttp {
         this.gson = gson;
     }
 
-    /** Cancels calls and scheduled retries. Newer selections start a new epoch. */
+    /** Cancels item-page calls and their retries. Session-long fetches stay up. */
     public void beginRequest() {
         epoch.incrementAndGet();
-        cancelOutstanding();
+        cancel(calls, pendingRetries);
     }
 
     /** Stop the retry scheduler. Does not wait for tasks to finish. */
     public void shutdown() {
         epoch.incrementAndGet();
-        cancelOutstanding();
+        lifetime.incrementAndGet();
+        cancel(calls, pendingRetries);
+        cancel(stableCalls, stableRetries);
         retries.shutdownNow();
     }
 
     public CompletableFuture<JsonObject> getJson(String url) {
-        CompletableFuture<JsonObject> future = new CompletableFuture<>();
-        dispatch(url, false, future, 0, epoch.get());
-        return future;
+        return requestObject(url, false, false);
     }
 
     public CompletableFuture<JsonObject> getWiki(String url) {
-        CompletableFuture<JsonObject> future = new CompletableFuture<>();
-        dispatch(withMaxlag(url), true, future, 0, epoch.get());
+        return requestObject(withMaxlag(url), true, false);
+    }
+
+    /**
+     * One JSON value, array or object, that is not cancelled when the open
+     * item changes. Shutdown still cancels it. Same User-Agent and retry as
+     * {@link #getJson(String)}.
+     */
+    public CompletableFuture<JsonElement> getStableElement(String url) {
+        CompletableFuture<JsonElement> future = new CompletableFuture<>();
+        dispatch(url, false, true, future, 0, lifetime.get());
         return future;
+    }
+
+    private CompletableFuture<JsonObject> requestObject(String url, boolean mediawiki, boolean stable) {
+        CompletableFuture<JsonElement> future = new CompletableFuture<>();
+        int token = stable ? lifetime.get() : epoch.get();
+        dispatch(url, mediawiki, stable, future, 0, token);
+        return future.thenApply(WikiHttp::requireObject);
+    }
+
+    private static JsonObject requireObject(JsonElement element) {
+        if (element == null || !element.isJsonObject()) {
+            throw new IllegalStateException("Unexpected JSON");
+        }
+        return element.getAsJsonObject();
     }
 
     public static String withMaxlag(String url) {
@@ -102,8 +130,8 @@ public class WikiHttp {
         }
     }
 
-    private void dispatch(String url, boolean mediawiki, CompletableFuture<JsonObject> future, int attempt, int token) {
-        if (token != epoch.get() || future.isDone()) {
+    private void dispatch(String url, boolean mediawiki, boolean stable, CompletableFuture<JsonElement> future, int attempt, int token) {
+        if (token != tokenNow(stable) || future.isDone()) {
             future.completeExceptionally(new RequestCancelledException());
             return;
         }
@@ -112,12 +140,13 @@ public class WikiHttp {
             .header("User-Agent", USER_AGENT)
             .build();
         Call call = okHttpClient.newCall(request);
-        calls.add(call);
+        Set<Call> bucket = stable ? stableCalls : calls;
+        bucket.add(call);
         call.enqueue(new Callback() {
             @Override
             public void onFailure(Call call, IOException e) {
-                calls.remove(call);
-                if (token != epoch.get()) {
+                bucket.remove(call);
+                if (token != tokenNow(stable)) {
                     future.completeExceptionally(new RequestCancelledException());
                     return;
                 }
@@ -126,16 +155,16 @@ public class WikiHttp {
 
             @Override
             public void onResponse(Call call, Response response) {
-                calls.remove(call);
+                bucket.remove(call);
                 try (Response responseToClose = response) {
-                    if (token != epoch.get()) {
+                    if (token != tokenNow(stable)) {
                         future.completeExceptionally(new RequestCancelledException());
                         return;
                     }
                     int code = responseToClose.code();
                     if (code == 429 || code == 503 || code >= 500) {
                         if (attempt == 0) {
-                            scheduleRetry(url, mediawiki, future, token,
+                            scheduleRetry(url, mediawiki, stable, future, token,
                                 retryAfterMillis(responseToClose.header("Retry-After"), 2_000L));
                             return;
                         }
@@ -147,22 +176,22 @@ public class WikiHttp {
                         return;
                     }
                     ResponseBody body = responseToClose.body();
-                    JsonObject obj = gson.fromJson(body.string(), JsonObject.class);
-                    if (obj == null) {
+                    JsonElement element = gson.fromJson(body.string(), JsonElement.class);
+                    if (element == null || element.isJsonNull()) {
                         future.completeExceptionally(new IOException("Unexpected JSON"));
                         return;
                     }
-                    if (mediawiki && isMaxlag(obj)) {
+                    if (mediawiki && element.isJsonObject() && isMaxlag(element.getAsJsonObject())) {
                         if (attempt == 0) {
-                            scheduleRetry(url, mediawiki, future, token, 5_000L);
+                            scheduleRetry(url, mediawiki, stable, future, token, 5_000L);
                             return;
                         }
                         future.completeExceptionally(new IOException("wiki maxlag"));
                         return;
                     }
-                    future.complete(obj);
+                    future.complete(element);
                 } catch (Exception e) {
-                    if (token != epoch.get()) {
+                    if (token != tokenNow(stable)) {
                         future.completeExceptionally(new RequestCancelledException());
                     } else {
                         future.completeExceptionally(e);
@@ -172,28 +201,40 @@ public class WikiHttp {
         });
     }
 
-    private void scheduleRetry(String url, boolean mediawiki, CompletableFuture<JsonObject> future, int token, long waitMs) {
-        if (token != epoch.get()) {
+    private void scheduleRetry(
+        String url,
+        boolean mediawiki,
+        boolean stable,
+        CompletableFuture<JsonElement> future,
+        int token,
+        long waitMs
+    ) {
+        if (token != tokenNow(stable)) {
             future.completeExceptionally(new RequestCancelledException());
             return;
         }
         long delay = Math.min(MAX_BACKOFF_MS, Math.max(0L, waitMs));
+        Set<ScheduledFuture<?>> bucket = stable ? stableRetries : pendingRetries;
         ScheduledFuture<?> scheduled = retries.schedule(() -> {
-            pendingRetries.removeIf(ScheduledFuture::isDone);
-            dispatch(url, mediawiki, future, 1, token);
+            bucket.removeIf(ScheduledFuture::isDone);
+            dispatch(url, mediawiki, stable, future, 1, token);
         }, delay, TimeUnit.MILLISECONDS);
-        pendingRetries.add(scheduled);
+        bucket.add(scheduled);
     }
 
-    private void cancelOutstanding() {
+    private int tokenNow(boolean stable) {
+        return stable ? lifetime.get() : epoch.get();
+    }
+
+    private static void cancel(Set<Call> calls, Set<ScheduledFuture<?>> retries) {
         for (Call call : calls) {
             call.cancel();
         }
         calls.clear();
-        for (ScheduledFuture<?> scheduled : pendingRetries) {
+        for (ScheduledFuture<?> scheduled : retries) {
             scheduled.cancel(false);
         }
-        pendingRetries.clear();
+        retries.clear();
     }
 
     private static boolean isMaxlag(JsonObject obj) {

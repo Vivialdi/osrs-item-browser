@@ -10,9 +10,14 @@ import com.osr.jei.model.EquipmentStats;
 import com.osr.jei.model.MonsterInfo;
 import com.osr.jei.model.SearchItem;
 import com.osr.jei.model.ShopEntry;
+import com.osr.jei.owned.OwnedItems;
+import com.osr.jei.owned.OwnedText;
 import com.osr.jei.pricing.Alchemy;
+import com.osr.jei.pricing.BuyLimitSnapshot;
+import com.osr.jei.pricing.MarketQuote;
 import com.osr.jei.pricing.PriceQuote;
 import com.osr.jei.search.ItemSearch;
+import com.osr.jei.service.BuyLimitService;
 import com.osr.jei.service.ItemDetails;
 import com.osr.jei.service.ItemDetailsService;
 import com.osr.jei.service.MonsterService;
@@ -119,6 +124,7 @@ public class JEIPanel extends PluginPanel {
     @Inject private JEIConfig config;
     @Inject private ItemDetailsService itemDetailsService;
     @Inject private PriceService priceService;
+    @Inject private BuyLimitService buyLimitService;
     @Inject private MonsterService monsterService;
     @Inject private WikiHttp wikiHttp;
 
@@ -171,7 +177,10 @@ public class JEIPanel extends PluginPanel {
     private JPanel nameRow;
     private JLabel lblName;
     private JLabel lblIronman;
+    private JPanel marketBox;
     private JLabel lblPrice;
+    private WrappingLabel lblMarket;
+    private WrappingLabel lblOwned;
     private JLabel lblMembersWeight;
     private JLabel lblHaAlch;
     private JPanel detailPanel;
@@ -192,6 +201,9 @@ public class JEIPanel extends PluginPanel {
     private PriceQuote shownPrice = PriceQuote.MISSING;
     private PriceQuote shownNature = PriceQuote.MISSING;
     private boolean pricesFetched;
+    private OwnedItems.Snapshot ownedSnapshot = OwnedItems.Snapshot.NONE;
+    private BuyLimitSnapshot shownLimits;
+    private boolean limitLoadInFlight;
     private List<SearchItem> lastGridItems = Collections.emptyList();
 
     public JEIPanel() {
@@ -377,6 +389,33 @@ public class JEIPanel extends PluginPanel {
         }
     }
 
+    /**
+     * Replaces the owned snapshot. The Swing tree is touched only from the
+     * event thread, and only when the detail view is already showing an item.
+     */
+    public void onOwnedChanged(OwnedItems.Snapshot snapshot) {
+        if (!SwingUtilities.isEventDispatchThread()) {
+            SwingUtilities.invokeLater(() -> onOwnedChanged(snapshot));
+            return;
+        }
+        if (closed) {
+            return;
+        }
+        OwnedItems.Snapshot next = snapshot == null ? OwnedItems.Snapshot.NONE : snapshot;
+        if (next.equals(ownedSnapshot)) {
+            return;
+        }
+        ownedSnapshot = next;
+        if (!initialised) {
+            return;
+        }
+        if (shownItem != null && shownDetails != null) {
+            renderDetails();
+        } else {
+            updateOwnedHeader();
+        }
+    }
+
     public void lookupItem(int itemId) {
         clientThread.invokeLater(() -> {
             int resolved = itemId;
@@ -529,7 +568,18 @@ public class JEIPanel extends PluginPanel {
         nameRow.add(starButton, BorderLayout.EAST);
 
         lblMembersWeight = plainLabel(" ", "small", MUTED);
+        lblOwned = new WrappingLabel();
+        style.apply(lblOwned, "small");
+        lblOwned.setForeground(MUTED);
+        lblOwned.setVisible(false);
         lblPrice = plainLabel(" ", "price", GOLD);
+        lblMarket = new WrappingLabel();
+        style.apply(lblMarket, "small");
+        lblMarket.setForeground(NEUTRAL);
+        lblMarket.setVisible(false);
+        marketBox = verticalBox();
+        marketBox.add(lblPrice);
+        marketBox.add(lblMarket);
         lblHaAlch = plainLabel(" ", "body", GOOD);
 
         equipmentSection = section("Equipment");
@@ -574,6 +624,7 @@ public class JEIPanel extends PluginPanel {
         detailPanel.add(nameRow);
         detailPanel.add(Box.createRigidArea(new Dimension(0, 3)));
         detailPanel.add(lblMembersWeight);
+        detailPanel.add(lblOwned);
         detailPanel.add(Box.createRigidArea(new Dimension(0, 4)));
         for (String section : DetailLayout.order(ironmanActive)) {
             detailPanel.add(sectionComponent(section));
@@ -587,7 +638,7 @@ public class JEIPanel extends PluginPanel {
     private JComponent sectionComponent(String section) {
         switch (section) {
             case DetailLayout.GE:
-                return lblPrice;
+                return marketBox;
             case DetailLayout.ALCH:
                 return lblHaAlch;
             case DetailLayout.EQUIPMENT:
@@ -886,6 +937,12 @@ public class JEIPanel extends PluginPanel {
         updateIronmanBadge();
         lblPrice.setForeground(ironmanActive ? MUTED : GOLD);
         lblPrice.setText(config.showPrices() ? "Loading..." : " ");
+        shownDetails = null;
+        shownPrice = PriceQuote.MISSING;
+        pricesFetched = false;
+        updateMarket();
+        ensureLimits();
+        updateOwnedHeader();
         lblHaAlch.setText(" ");
         equipmentSection.setVisible(false);
         shopsSection.setVisible(false);
@@ -920,6 +977,9 @@ public class JEIPanel extends PluginPanel {
         String geLine = TradeCopy.geLine(ironmanActive, config.showPrices(), shownPrice);
         lblPrice.setText(geLine.isEmpty() ? " " : geLine);
         lblPrice.setForeground(ironmanActive ? MUTED : GOLD);
+        updateMarket();
+        ensureLimits();
+        updateOwnedHeader();
 
         long geBuy = config.showPrices() && shownPrice != null ? shownPrice.buyPrice() : -1;
         long nature = config.showPrices() && shownNature != null ? shownNature.buyPrice() : -1;
@@ -943,6 +1003,122 @@ public class JEIPanel extends PluginPanel {
         populateDrops(details.drops);
         detailPanel.revalidate();
         detailPanel.repaint();
+    }
+
+    private void updateOwnedHeader() {
+        if (lblOwned == null) {
+            return;
+        }
+        if (!config.showOwned() || shownItem == null) {
+            lblOwned.setVisible(false);
+            return;
+        }
+        OwnedItems.Snapshot snapshot = ownedSnapshot == null ? OwnedItems.Snapshot.NONE : ownedSnapshot;
+        long have = snapshot.count(shownItem.id);
+        lblOwned.setText(OwnedText.header(snapshot.inventoryKnown(), snapshot.bankKnown(), have));
+        lblOwned.setVisible(true);
+        lblOwned.setForeground(snapshot.inventoryKnown() && snapshot.bankKnown() ? NEUTRAL : MUTED);
+        lblOwned.setToolTipText(snapshot.bankKnown()
+            ? "Inventory, worn equipment, and bank."
+            : OwnedText.BANK_UNKNOWN_TIP);
+    }
+
+    private void updateMarket() {
+        if (lblMarket == null) {
+            return;
+        }
+        if (!config.showPrices() || !pricesFetched || shownItem == null) {
+            lblMarket.setText(" ");
+            lblMarket.setVisible(false);
+            return;
+        }
+        boolean ready = shownLimits != null && shownLimits.fresh(System.currentTimeMillis());
+        Integer limit = ready ? shownLimits.limit(shownItem.id) : null;
+        MarketQuote quote = MarketQuote.describe(ironmanActive, shownItem.id, shownPrice, limit, ready);
+        if (quote.text.isEmpty()) {
+            lblMarket.setVisible(false);
+            return;
+        }
+        lblMarket.setHtml(escape(quote.text));
+        if (ironmanActive) {
+            lblMarket.setForeground(MUTED);
+            lblMarket.setToolTipText("Grand Exchange figures are a reference only.");
+        } else if (quote.marginSign > 0) {
+            lblMarket.setForeground(GOOD);
+            lblMarket.setToolTipText("Margin after the 2% GE tax, capped at 5m per item.");
+        } else if (quote.marginSign < 0) {
+            lblMarket.setForeground(BAD);
+            lblMarket.setToolTipText("Margin after the 2% GE tax, capped at 5m per item.");
+        } else {
+            lblMarket.setForeground(NEUTRAL);
+            lblMarket.setToolTipText("Buy limit from the wiki price mapping.");
+        }
+        lblMarket.setVisible(true);
+    }
+
+    /** One mapping fetch for the whole session. Skipped unless GE prices are on. */
+    private void ensureLimits() {
+        if (closed || buyLimitService == null || !config.showPrices()) {
+            return;
+        }
+        if (shownLimits != null && shownLimits.fresh(System.currentTimeMillis())) {
+            return;
+        }
+        if (limitLoadInFlight) {
+            return;
+        }
+        limitLoadInFlight = true;
+        buyLimitService.load().whenComplete((snap, error) -> SwingUtilities.invokeLater(() -> {
+            limitLoadInFlight = false;
+            if (closed) {
+                return;
+            }
+            if (snap != null && snap.fresh(System.currentTimeMillis())) {
+                shownLimits = snap;
+                if (pricesFetched) {
+                    updateMarket();
+                    if (detailPanel != null) {
+                        detailPanel.revalidate();
+                        detailPanel.repaint();
+                    }
+                }
+            }
+        }));
+    }
+
+    private RecipeTreeView.Counts ownedCounts() {
+        if (!config.showOwned()) {
+            return null;
+        }
+        OwnedItems.Snapshot snapshot = ownedSnapshot == null ? OwnedItems.Snapshot.NONE : ownedSnapshot;
+        return new RecipeTreeView.Counts() {
+            @Override
+            public boolean show() {
+                return true;
+            }
+
+            @Override
+            public boolean inventoryKnown() {
+                return snapshot.inventoryKnown();
+            }
+
+            @Override
+            public boolean bankKnown() {
+                return snapshot.bankKnown();
+            }
+
+            @Override
+            public Long have(String itemName) {
+                if (!snapshot.inventoryKnown()) {
+                    return null;
+                }
+                SearchItem item = findByName(itemName);
+                if (item == null) {
+                    return null;
+                }
+                return snapshot.count(item.id);
+            }
+        };
     }
 
     private void populateEquipment(Optional<EquipmentStats> statsOpt) {
@@ -1025,7 +1201,7 @@ public class JEIPanel extends PluginPanel {
         Integer rootId = shownItem == null ? null : shownItem.id;
         ItemDetails root = shownDetails == null ? ItemDetails.EMPTY : shownDetails;
         BuildExpander.Result tree = BuildExpander.expandSelected(rootName, rootId, root, viewPages(), expandedPaths);
-        RecipeTreeView.fill(recipeBody, style, tree, !expandedPaths.isEmpty(), treeActions());
+        RecipeTreeView.fill(recipeBody, style, tree, !expandedPaths.isEmpty(), treeActions(), ownedCounts());
         recipeSection.setVisible(true);
         if (!tree.pending.isEmpty()) {
             scheduleTreeLoads(tree.pending);

@@ -95,4 +95,14 @@ public interface JEIConfig extends Config {
     default IronmanMode ironmanMode() {
         return IronmanMode.AUTO;
     }
+
+    @ConfigItem(
+        keyName = "showOwned",
+        name = "Show owned counts",
+        description = "Show how many of each item you have in your inventory, worn equipment, and bank. The bank is included after you open it once this session. This does not contact the wiki.",
+        position = 8
+    )
+    default boolean showOwned() {
+        return true;
+    }
 }

@@ -17,8 +17,20 @@ Search any Old School RuneScape item instantly and see everything about it in on
 - See the skill, level requirement, facility (anvil, furnace, etc.), and XP reward for crafted items
 - Click any ingredient in the recipe to jump straight to that item's detail page
 - Expand an ingredient, or use **Expand tree**, for a build path. Sub-pages load only when opened (depth 4, 20 items) and looping recipes stop
-- A **Base materials** list totals the expanded branches
+- A **Base materials** list totals the expanded branches, including how many you still need
 - "Used to craft" button expands a full list of every item this ingredient is used in
+
+### Owned counts
+- The detail header shows how many of the open item you have in your inventory, worn equipment, and bank
+- Recipe rows and build-path nodes show `have / need`, and shortfalls are highlighted
+- The base-materials rollup adds a **still needed** figure
+- The bank is included only after you open it once this session. Until then the count says the bank has not been opened, instead of treating it as zero
+- Turn this off with **Show owned counts**. It does not request anything from the wiki
+
+### Grand Exchange limits
+- With **Show GE Prices** on, the first lookup also loads buy limits from the wiki `/mapping` list (once per session, or again after 24 hours)
+- The detail line shows the buy limit, instant sell, the margin after the 2% GE tax (capped at 5m per item, with the wiki's exempt items untaxed), and the result across one 4-hour limit
+- Ironman mode keeps the same figures, labelled as a reference only
 
 ### Drop Sources
 - Drop table for any item: monster name, combat level, drop quantity, and drop rate
@@ -46,7 +58,17 @@ Search any Old School RuneScape item instantly and see everything about it in on
 ### Ironman mode
 - **Auto** (the default) follows the logged-in account. Ironman, Hardcore, Ultimate, and Group Ironman accounts see shops, drop sources, and the crafting tree before Grand Exchange info
 - **On** and **Off** override that, including at the login screen
-- High alch and store prices stay prominent. Grand Exchange prices are a reference, and they are still skipped entirely when **Show GE Prices** is off
+- High alch and store prices stay prominent. Grand Exchange prices, limits, and margins are a reference, and they are still skipped entirely when **Show GE Prices** is off
+
+## Screenshots
+
+In-game screenshots are not in this repository yet. Add them here before a Plugin Hub submission:
+
+- Search results and the item detail header, including an owned count
+- A crafting tree with `have / need` on a shortfall, and the base-materials **still needed** line
+- Grand Exchange instant prices, post-tax margin, and the 4-hour limit
+- The same item on an Ironman account, with GE figures marked as a reference
+- The detail header before the bank has been opened this session
 
 ## Usage
 
