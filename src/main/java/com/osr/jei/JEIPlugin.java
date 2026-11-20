@@ -3,9 +3,12 @@ package com.osr.jei;
 import com.google.inject.Provides;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
+import net.runelite.api.GameState;
 import net.runelite.api.MenuAction;
+import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.MenuEntryAdded;
 import net.runelite.api.widgets.Widget;
+import net.runelite.client.callback.ClientThread;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.events.ConfigChanged;
@@ -34,6 +37,7 @@ import java.awt.image.BufferedImage;
 public class JEIPlugin extends Plugin {
 
     @Inject private Client client;
+    @Inject private ClientThread clientThread;
     @Inject private ClientToolbar clientToolbar;
     @Inject private JEIPanel panel;
 
@@ -55,10 +59,24 @@ public class JEIPlugin extends Plugin {
                     .build();
                 clientToolbar.addNavigation(navButton);
                 log.info("OSRS Item Browser started");
+                clientThread.invokeLater(() -> {
+                    if (!panel.isClosed()) {
+                        panel.ensureItemIndex(client.getGameState());
+                    }
+                });
             } catch (Exception e) {
                 log.error("OSRS Item Browser failed to start", e);
             }
         });
+    }
+
+    @Subscribe
+    public void onGameStateChanged(GameStateChanged event) {
+        if (panel.isClosed()) {
+            return;
+        }
+        GameState state = event.getGameState();
+        panel.ensureItemIndex(state);
     }
 
     @Override

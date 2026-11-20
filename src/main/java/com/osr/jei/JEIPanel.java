@@ -20,6 +20,7 @@ import com.osr.jei.ui.WrappingLabel;
 import com.osr.jei.wiki.RequestCancelledException;
 import com.osr.jei.wiki.WikiHttp;
 import lombok.extern.slf4j.Slf4j;
+import net.runelite.api.GameState;
 import net.runelite.api.ItemComposition;
 import net.runelite.api.gameval.ItemID;
 import net.runelite.client.callback.ClientThread;
@@ -137,7 +138,11 @@ public class JEIPanel extends PluginPanel {
     private volatile String lastSearchQuery = "";
 
     private UiStyle style;
+    private boolean initStarted;
     private boolean initialised;
+    private volatile boolean indexPopulated;
+    private volatile boolean indexScanning;
+    private volatile GameState pendingGameState;
     private boolean dividerApplied;
     private int lastWrapWidth = -1;
     private ScheduledFuture<?> pendingSearch;
@@ -151,6 +156,7 @@ public class JEIPanel extends PluginPanel {
     private JPanel usedInListPanel;
     private JPanel historyPanel;
     private JPanel historyIcons;
+    private JLabel indexStatus;
     private JToggleButton favToggle;
     private JButton backButton;
     private JButton starButton;
@@ -186,10 +192,10 @@ public class JEIPanel extends PluginPanel {
     }
 
     public void init() {
-        if (closed || initialised) {
+        if (closed || initialised || initStarted) {
             return;
         }
-        initialised = true;
+        initStarted = true;
         style = UiStyle.from(config.fontSize(), config.fontStyle(), config.fontFamily());
         setLayout(new BorderLayout(0, 4));
         setBackground(ColorScheme.DARK_GRAY_COLOR);
@@ -199,10 +205,12 @@ public class JEIPanel extends PluginPanel {
         loadRecent();
 
         historyPanel = buildHistoryBar();
+        indexStatus = plainLabel("Waiting for the game cache\u2026", "small", MUTED);
         JPanel north = new JPanel();
         north.setLayout(new BoxLayout(north, BoxLayout.Y_AXIS));
         north.setBackground(ColorScheme.DARK_GRAY_COLOR);
         north.add(buildSearchBar());
+        north.add(indexStatus);
         north.add(historyPanel);
         add(north, BorderLayout.NORTH);
         add(buildContent(), BorderLayout.CENTER);
@@ -225,8 +233,66 @@ public class JEIPanel extends PluginPanel {
             }
         });
 
-        buildItemIndex();
+        initialised = true;
+        GameState pending = pendingGameState;
+        if (pending != null) {
+            ensureItemIndex(pending);
+        }
         SwingUtilities.invokeLater(this::hookDividerDrag);
+    }
+
+    /**
+     * Starts the item-definition scan once the game cache is available.
+     * Safe to call from the client thread or the EDT. A finished index is left alone.
+     */
+    public void ensureItemIndex(GameState state) {
+        if (closed) {
+            return;
+        }
+        if (!initialised) {
+            pendingGameState = state;
+            return;
+        }
+        if (!ItemIndexGate.shouldStart(state, indexPopulated, indexScanning)) {
+            if (!indexPopulated && !indexScanning) {
+                showIndexStatus("Waiting for the game cache\u2026");
+            }
+            return;
+        }
+        synchronized (this) {
+            if (indexPopulated || indexScanning) {
+                return;
+            }
+            indexScanning = true;
+        }
+        showIndexStatus("Loading item index\u2026");
+        clientThread.invokeLater(() -> {
+            if (closed) {
+                indexScanning = false;
+                return;
+            }
+            indexingByName.clear();
+            indexingById.clear();
+            scanChunk(0);
+        });
+    }
+
+    private void showIndexStatus(String text) {
+        if (!SwingUtilities.isEventDispatchThread()) {
+            SwingUtilities.invokeLater(() -> showIndexStatus(text));
+            return;
+        }
+        if (indexStatus == null) {
+            return;
+        }
+        if (text == null || text.isEmpty()) {
+            indexStatus.setVisible(false);
+        } else {
+            indexStatus.setText(text);
+            indexStatus.setVisible(true);
+        }
+        revalidate();
+        repaint();
     }
 
     public void shutdown() {
@@ -471,10 +537,6 @@ public class JEIPanel extends PluginPanel {
         return detailPanel;
     }
 
-    private void buildItemIndex() {
-        clientThread.invokeLater(() -> scanChunk(0));
-    }
-
     private void scanChunk(int start) {
         if (closed) {
             return;
@@ -515,11 +577,22 @@ public class JEIPanel extends PluginPanel {
         nameIndex = names;
         idIndex = ids;
         if (finished) {
+            if (items.isEmpty()) {
+                indexScanning = false;
+                log.info("[JEI] Item index was empty; waiting for the game cache");
+                showIndexStatus("Waiting for the game cache\u2026");
+                return;
+            }
+            indexPopulated = true;
+            indexScanning = false;
             log.info("[JEI] Item index ready — {} unique items", items.size());
         }
         SwingUtilities.invokeLater(() -> {
             if (closed) {
                 return;
+            }
+            if (finished) {
+                showIndexStatus(null);
             }
             rebuildHistory();
             if (!lastSearchQuery.isEmpty()) {
