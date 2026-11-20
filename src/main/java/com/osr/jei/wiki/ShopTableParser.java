@@ -129,9 +129,21 @@ public final class ShopTableParser {
                 stock = Html.sortNumber(cells.get(stockCol), ShopEntry.UNKNOWN);
             }
 
-            shops.add(new ShopEntry(shopName, price, stock, currency, sells));
+            shops.add(new ShopEntry(cleanName(shopName), price, stock, currency, sells));
         }
         return shops;
+    }
+
+    /** Wiki cells sometimes end the seller name with a stray period. */
+    static String cleanName(String name) {
+        if (name == null) {
+            return "";
+        }
+        String trimmed = name.trim();
+        while (trimmed.endsWith(".") || trimmed.endsWith("\u00b7")) {
+            trimmed = trimmed.substring(0, trimmed.length() - 1).trim();
+        }
+        return trimmed;
     }
 
     static boolean isStockHeader(String headerLower) {

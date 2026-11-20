@@ -56,10 +56,10 @@ Use a normal account first, then an ironman account for the ironman steps. Have 
     - Expected: child pages load as you open them. A loop does not keep requesting. **Base materials** shows a still-needed figure where you are short.
     - Screenshot: README slot 2 (`docs/crafting-tree.png`).
 17. Open **Used to craft** on an ingredient that is used in something.
-    - Expected: the product list appears. An item with no uses says "No uses listed."
-18. Open **Dropped by** and try each sort: Rate, Combat level, Name.
-    - Expected: rates that are numeric show as `1/X`. The hover text is the wiki's original rate. Combat level sort keeps rows with no level at the bottom. Changing **Drop sort** in the config reorders the open list.
-    - Screenshot: README slot 3 (`docs/drop-rates.png`).
+   - Expected: the header is one line with a count until you click it. The product list then opens under that header in the detail pane. An item with no uses says "No uses listed."
+18. Open **Dropped by** and try each sort: Rate, Combat level, Name. Click one monster, then click the locations header.
+   - Expected: the drop header shows a count and the most common monster before the list is open. Rates that are numeric show as `1/X`. The hover text is the wiki's original rate. Combat level sort keeps rows with no level at the bottom. Changing **Drop sort** in the config reorders the open list. Locations stay under that monster. Collapsing them does not request the wiki page again.
+   - Screenshot: README slot 3 (`docs/drop-rates.png`).
 19. Turn **Drop sources** off.
     - Expected: the drop control hides. The other sections stay.
 
@@ -76,12 +76,12 @@ Use a normal account first, then an ironman account for the ironman steps. Have 
 ## Grand Exchange and ironman
 
 23. With **GE prices** on, open a tradeable item.
-    - Expected: instant buy, instant sell, post-tax margin, buy limit, and the 4-hour figure. High alch shows, with profit only when the nature-rune price is known.
+   - Expected: the always-visible block is the GE guide price, the buy limit, and high alch. Instant sell, post-tax margin, the 4-hour total, and alch profit are under **Trading details**. High alch profit is not on the always-visible block.
     - Screenshot: README slot 5 (`docs/ge-margin.png`).
 24. If a line says the price data is some number of minutes or hours old, leave it.
     - Expected: the age is on screen. The panel does not keep requesting prices while that snapshot is still in date.
 25. Log into an ironman (or set **Ironman mode** to On). Open the same item.
-    - Expected: shops, drops, and crafting sit above the GE block. GE text is labelled as a reference. **Auto** does this only for an ironman account. **Off** restores the normal order even on an ironman. **On** uses the ironman order at the login screen too.
+   - Expected: shop, drop, and crafting headers sit above the GE block. GE text is labelled as a reference and is split into short lines. **Auto** does this only for an ironman account. **Off** restores the normal order even on an ironman. **On** uses the ironman order at the login screen too.
     - Screenshot: README slot 6 (`docs/ironman-reference.png`).
 26. Turn **GE prices** off.
     - Expected: price, margin, and buy-limit lines hide. High alch can remain. Turning it back on loads prices without rebuilding the item list.
@@ -97,10 +97,12 @@ Use a normal account first, then an ironman account for the ironman steps. Have 
     - Expected: the location view says the wiki could not be reached and offers **Retry**, rather than "No locations are listed."
 30. Search for an item the wiki does not have a page for, if you have one in the index.
     - Expected: "The OSRS Wiki has no page for this item." Retry is available and does not repeat on its own.
-31. Drag the detail divider, then resize the client window narrower and wider.
-    - Expected: both panes stay usable, text wraps, and the divider does not collapse a pane. The new share is still the value in **Detail pane share** after you reopen the config.
-32. Change font size, style, and family while an item is open.
-    - Expected: the sidebar text updates immediately, including the detail pane and the drop list.
+31. With no search, then search for `rune`, then drag the sidebar narrower and wider. Open Air rune and expand **Shop sources** and the crafting tree.
+   - Expected: with no search, the results area does not leave a blank block; Favourites (when you have some) and Recent stay. The search box is the full width of the row. Each filter is its own row, label plus a combo you can read (`Any trade`, not `A...`). Right-click an icon to favourite it. Icon rows fill the width. Shop names wrap, the price is its own column, and **Show on map** drops a world-map pin after one wiki read. Ingredient rows wrap beside the icon, including indented nodes. Nothing is cut off. The divider share is still **Detail pane share** after you reopen the config.
+32. Change font size, style, and family while an item is open, then narrow the sidebar again.
+   - Expected: the sidebar text updates immediately, including collapsed headers and an open drop list, and the lines reflow to the new font and width.
+33. Open Air rune, or any item with a long shop list, and do not click the section headers.
+   - Expected: the detail pane shows the name, members, weight, owned count, GE buy / sell / margin / limit, and high alch. Shops, uses, drops, crafting, and equipment are one-line headers with a count or short summary. Clicking a header opens the rows already loaded. It does not ask the wiki for the item page again.
 
 ## Not part of this pass
 

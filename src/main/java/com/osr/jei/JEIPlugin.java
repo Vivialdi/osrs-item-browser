@@ -142,6 +142,7 @@ public class JEIPlugin extends Plugin {
     public void onGameTick(GameTick event) {
         if (!panel.isClosed()) {
             progress.readQuestsIfDirty();
+            panel.nudgeMap();
         }
     }
 

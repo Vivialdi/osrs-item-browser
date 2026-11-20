@@ -22,7 +22,7 @@ public class ShopAndPageParseTest {
         + "<th>Number<br />in stock</th><th>Restock<br />time</th>"
         + "<th>Price<br />sold at</th><th>Price<br />bought at</th>"
         + "</tr>"
-        + "<tr><td><a href=\"/w/Shantay_Pass_Shop\">Shantay Pass Shop</a></td><td>Desert</td>"
+        + "<tr><td><a href=\"/w/Shantay_Pass_Shop\">Shantay Pass Shop.</a></td><td>Desert</td>"
         + "<td data-sort-value=\"0\">0</td><td data-sort-value=\"60\">1m</td>"
         + "<td data-sort-value=\"2\">2</td><td>1</td></tr>"
         + "<tr><td>Fishing Guild Shop</td><td>Guild</td>"

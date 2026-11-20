@@ -93,12 +93,27 @@ public final class RecipeTreeView {
         Counts counts,
         Marks marks
     ) {
+        fill(body, style, result, anyOpen, actions, counts, marks, true);
+    }
+
+    public static void fill(
+        JPanel body,
+        UiStyle style,
+        BuildExpander.Result result,
+        boolean anyOpen,
+        Actions actions,
+        Counts counts,
+        Marks marks,
+        boolean includeHeader
+    ) {
         body.removeAll();
         boolean ingredients = hasIngredients(result);
-        JLabel header = label(style, ingredients
-            ? "Crafting / Build path"
-            : (result.recipes.size() == 1 ? "Crafting recipe" : "Crafting recipes"), "bodyBold", Color.WHITE);
-        body.add(header);
+        if (includeHeader) {
+            JLabel header = label(style, ingredients
+                ? "Crafting / Build path"
+                : (result.recipes.size() == 1 ? "Crafting recipe" : "Crafting recipes"), "bodyBold", Color.WHITE);
+            body.add(header);
+        }
         if (ingredients) {
             JButton expand = button(style, "Expand tree", "button");
             expand.setForeground(LINK);
@@ -226,9 +241,41 @@ public final class RecipeTreeView {
         if (node.cycle) {
             text = text + " (loop)";
         }
-        String htmlText = escape(text) + ownedSuffix(counts, node.name, node.quantity, false);
         Color nameColor = unmet ? UNMET : (open ? LINK : ColorScheme.LIGHT_GRAY_COLOR);
-        WrappingLabel name = html(style, htmlText, "small", nameColor);
+        String suffix = "";
+        Color suffixColor = nameColor;
+        if (counts != null && counts.show() && counts.inventoryKnown()) {
+            Long have = counts.have(node.name);
+            if (have != null) {
+                suffix = OwnedText.haveNeedPlain(have.longValue(), node.quantity, counts.bankKnown());
+                suffixColor = OwnedText.haveNeedColor(have.longValue(), node.quantity, counts.bankKnown());
+            }
+        }
+        JPanel lines = new JPanel() {
+            @Override
+            public Dimension getMaximumSize() {
+                Dimension preferred = getPreferredSize();
+                return new Dimension(Integer.MAX_VALUE, preferred.height);
+            }
+
+            @Override
+            public Dimension getMinimumSize() {
+                Dimension preferred = getPreferredSize();
+                return new Dimension(0, preferred.height);
+            }
+        };
+        lines.setLayout(new BoxLayout(lines, BoxLayout.Y_AXIS));
+        lines.setOpaque(false);
+        lines.setAlignmentX(0f);
+        WrappingLabel name = html(style, escape(text), "small", nameColor);
+        name.setToolTipText(suffix.isEmpty() ? text : text + " \u00b7 " + suffix);
+        lines.add(name);
+        WrappingLabel have = null;
+        if (!suffix.isEmpty()) {
+            have = html(style, escape(suffix), "small", suffixColor);
+            have.setToolTipText(name.getToolTipText());
+            lines.add(have);
+        }
         if (open) {
             String itemName = node.name;
             MouseAdapter opener = new MouseAdapter() {
@@ -241,12 +288,28 @@ public final class RecipeTreeView {
             icon.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
             name.addMouseListener(opener);
             icon.addMouseListener(opener);
+            if (have != null) {
+                have.setCursor(name.getCursor());
+                have.addMouseListener(opener);
+            }
         }
-        JPanel center = new JPanel(new BorderLayout(4, 0));
+        JPanel center = new JPanel(new BorderLayout(4, 0)) {
+            @Override
+            public Dimension getMaximumSize() {
+                Dimension preferred = getPreferredSize();
+                return new Dimension(Integer.MAX_VALUE, preferred.height);
+            }
+
+            @Override
+            public Dimension getMinimumSize() {
+                Dimension preferred = getPreferredSize();
+                return new Dimension(0, preferred.height);
+            }
+        };
         center.setOpaque(false);
         center.setAlignmentX(0f);
         center.add(icon, BorderLayout.WEST);
-        center.add(name, BorderLayout.CENTER);
+        center.add(lines, BorderLayout.CENTER);
         row.add(center, BorderLayout.CENTER);
         return row;
     }
@@ -287,9 +350,11 @@ public final class RecipeTreeView {
     }
 
     private static JLabel label(UiStyle style, String text, String role, Color color) {
-        JLabel label = new JLabel(text);
+        WrappingLabel label = new WrappingLabel();
         style.apply(label, role);
         label.setForeground(color);
+        label.setHtml(escape(text));
+        label.setToolTipText(text);
         label.setAlignmentX(0f);
         return label;
     }
@@ -304,7 +369,7 @@ public final class RecipeTreeView {
     }
 
     private static JButton button(UiStyle style, String text, String role) {
-        JButton button = new JButton(text);
+        JButton button = new WrappingButton(text);
         style.apply(button, role);
         button.setBackground(ColorScheme.DARKER_GRAY_COLOR);
         button.setOpaque(false);
