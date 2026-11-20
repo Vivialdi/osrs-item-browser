@@ -36,6 +36,19 @@ public final class ItemDetails {
     public final List<DropEntry> drops;
     public final List<String> products;
     public final ItemRequirements requirements;
+    /** True when the wiki confirmed it has no page for this name. */
+    public final boolean missing;
+
+    public static final ItemDetails MISSING = new ItemDetails(
+        Collections.emptyList(),
+        Optional.empty(),
+        Double.NaN,
+        Collections.emptyList(),
+        Collections.emptyList(),
+        Collections.emptyList(),
+        ItemRequirements.NONE,
+        true
+    );
 
     public ItemDetails(
         List<RecipeInfo> recipes,
@@ -57,6 +70,19 @@ public final class ItemDetails {
         List<String> products,
         ItemRequirements requirements
     ) {
+        this(recipes, stats, weight, shops, drops, products, requirements, false);
+    }
+
+    public ItemDetails(
+        List<RecipeInfo> recipes,
+        Optional<EquipmentStats> stats,
+        double weight,
+        List<ShopEntry> shops,
+        List<DropEntry> drops,
+        List<String> products,
+        ItemRequirements requirements,
+        boolean missing
+    ) {
         this.recipes = recipes;
         this.stats = stats;
         this.weight = weight;
@@ -64,11 +90,12 @@ public final class ItemDetails {
         this.drops = drops;
         this.products = products;
         this.requirements = requirements == null ? ItemRequirements.NONE : requirements;
+        this.missing = missing;
     }
 
     public static ItemDetails from(PageContent page) {
         if (page == null || page.missing) {
-            return EMPTY;
+            return MISSING;
         }
         String shopsHtml = firstSection(page.html, "Shop_locations", "Shops", "Sold_by", "Store_locations");
         String sourcesHtml = firstSection(page.html, "Item_sources", "Sources", "Drop_sources", "Drops");

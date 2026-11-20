@@ -1,6 +1,7 @@
 package com.osr.jei.service;
 
 import com.osr.jei.pricing.BuyLimitSnapshot;
+import com.osr.jei.pricing.LimitResult;
 import com.osr.jei.wiki.RequestCancelledException;
 import com.osr.jei.wiki.WikiHttp;
 import lombok.extern.slf4j.Slf4j;
@@ -9,12 +10,14 @@ import javax.inject.Inject;
 import javax.inject.Singleton;
 import java.io.IOException;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 
 /**
  * One {@code /mapping} download for GE buy limits. It is started only when a
  * caller asks, kept for {@link BuyLimitSnapshot#TTL_MS}, and not requested
- * again per item. A failed attempt waits {@link #FAILURE_BACKOFF_MS} and
- * does not replace a previous good snapshot.
+ * again per item. Concurrent callers share one request. A failed attempt
+ * keeps the previous snapshot, waits {@link #FAILURE_BACKOFF_MS}, and does
+ * not replace a previous good snapshot. {@link #allowRetry()} clears the wait.
  */
 @Slf4j
 @Singleton
@@ -27,31 +30,40 @@ public class BuyLimitService {
     private final Object lock = new Object();
     private volatile BuyLimitSnapshot snapshot;
     private volatile long nextAttemptAt;
-    private CompletableFuture<BuyLimitSnapshot> inflight;
+    private CompletableFuture<LimitResult> inflight;
 
     @Inject
     public BuyLimitService(WikiHttp wikiHttp) {
         this.wikiHttp = wikiHttp;
     }
 
-    public CompletableFuture<BuyLimitSnapshot> load() {
+    /** Lets the next load contact the mapping API even if a failure holdoff is active. */
+    public void allowRetry() {
+        nextAttemptAt = 0L;
+    }
+
+    public CompletableFuture<LimitResult> load() {
         long now = System.currentTimeMillis();
         BuyLimitSnapshot current = snapshot;
         if (current != null && current.fresh(now)) {
-            return CompletableFuture.completedFuture(current);
+            return CompletableFuture.completedFuture(new LimitResult(current, false));
         }
         if (now < nextAttemptAt) {
-            return CompletableFuture.completedFuture(current == null ? BuyLimitSnapshot.empty() : current);
+            return CompletableFuture.completedFuture(new LimitResult(current, true));
         }
         synchronized (lock) {
             current = snapshot;
-            if (current != null && current.fresh(System.currentTimeMillis())) {
-                return CompletableFuture.completedFuture(current);
+            now = System.currentTimeMillis();
+            if (current != null && current.fresh(now)) {
+                return CompletableFuture.completedFuture(new LimitResult(current, false));
+            }
+            if (now < nextAttemptAt) {
+                return CompletableFuture.completedFuture(new LimitResult(current, true));
             }
             if (inflight != null) {
                 return inflight;
             }
-            CompletableFuture<BuyLimitSnapshot> mine = new CompletableFuture<>();
+            CompletableFuture<LimitResult> mine = new CompletableFuture<>();
             inflight = mine;
             wikiHttp.getStableElement(MAPPING).whenComplete((root, error) -> {
                 synchronized (lock) {
@@ -60,12 +72,14 @@ public class BuyLimitService {
                     }
                 }
                 if (error != null) {
-                    Throwable cause = error.getCause() == null ? error : error.getCause();
-                    if (!(cause instanceof RequestCancelledException)) {
-                        nextAttemptAt = System.currentTimeMillis() + FAILURE_BACKOFF_MS;
-                        log.debug("Could not refresh GE buy limits: {}", cause.getMessage());
+                    Throwable cause = unwrap(error);
+                    if (cause instanceof RequestCancelledException) {
+                        mine.completeExceptionally(cause);
+                        return;
                     }
-                    mine.completeExceptionally(cause);
+                    nextAttemptAt = System.currentTimeMillis() + FAILURE_BACKOFF_MS;
+                    log.debug("Could not refresh GE buy limits: {}", cause.getMessage());
+                    mine.complete(new LimitResult(snapshot, true));
                     return;
                 }
                 if (root == null || !root.isJsonArray()) {
@@ -76,9 +90,17 @@ public class BuyLimitService {
                 BuyLimitSnapshot fresh = BuyLimitSnapshot.fromMapping(root, System.currentTimeMillis());
                 snapshot = fresh;
                 nextAttemptAt = 0L;
-                mine.complete(fresh);
+                mine.complete(new LimitResult(fresh, false));
             });
             return mine;
         }
+    }
+
+    private static Throwable unwrap(Throwable error) {
+        Throwable current = error;
+        while (current instanceof CompletionException && current.getCause() != null) {
+            current = current.getCause();
+        }
+        return current;
     }
 }

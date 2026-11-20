@@ -27,6 +27,10 @@ public final class PriceSnapshot {
         return new PriceSnapshot(0, Collections.emptyMap());
     }
 
+    public long fetchedAt() {
+        return fetchedAt;
+    }
+
     public boolean fresh(long nowMs) {
         return fetchedAt > 0 && nowMs - fetchedAt < TTL_MS;
     }
