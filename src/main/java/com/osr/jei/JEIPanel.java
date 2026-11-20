@@ -2,6 +2,12 @@ package com.osr.jei;
 
 import com.osr.jei.crafting.BuildExpander;
 import com.osr.jei.crafting.RecipePages;
+import com.osr.jei.drops.DropRate;
+import com.osr.jei.drops.DropSort;
+import com.osr.jei.drops.DropSorter;
+import com.osr.jei.equipment.EquipmentCompare;
+import com.osr.jei.equipment.GearSlot;
+import com.osr.jei.equipment.WornGear;
 import com.osr.jei.ironman.DetailLayout;
 import com.osr.jei.ironman.IronmanAccounts;
 import com.osr.jei.ironman.TradeCopy;
@@ -10,6 +16,11 @@ import com.osr.jei.model.EquipmentStats;
 import com.osr.jei.model.MonsterInfo;
 import com.osr.jei.model.SearchItem;
 import com.osr.jei.model.ShopEntry;
+import com.osr.jei.requirements.ItemRequirements;
+import com.osr.jei.requirements.Mark;
+import com.osr.jei.requirements.PlayerProgress;
+import com.osr.jei.requirements.ProgressSnapshot;
+import com.osr.jei.requirements.RequirementJudge;
 import com.osr.jei.owned.OwnedItems;
 import com.osr.jei.owned.OwnedText;
 import com.osr.jei.pricing.Alchemy;
@@ -17,6 +28,8 @@ import com.osr.jei.pricing.BuyLimitSnapshot;
 import com.osr.jei.pricing.MarketQuote;
 import com.osr.jei.pricing.PriceQuote;
 import com.osr.jei.search.ItemSearch;
+import com.osr.jei.search.ItemTraits;
+import com.osr.jei.search.SearchCriteria;
 import com.osr.jei.service.BuyLimitService;
 import com.osr.jei.service.ItemDetails;
 import com.osr.jei.service.ItemDetailsService;
@@ -29,9 +42,12 @@ import com.osr.jei.ui.WrappingLabel;
 import com.osr.jei.wiki.RequestCancelledException;
 import com.osr.jei.wiki.WikiHttp;
 import lombok.extern.slf4j.Slf4j;
+import net.runelite.api.EquipmentInventorySlot;
 import net.runelite.api.GameState;
 import net.runelite.api.ItemComposition;
 import net.runelite.api.gameval.ItemID;
+import net.runelite.client.game.ItemEquipmentStats;
+import net.runelite.client.game.ItemStats;
 import net.runelite.client.callback.ClientThread;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.game.ItemManager;
@@ -47,6 +63,7 @@ import javax.swing.BorderFactory;
 import javax.swing.Box;
 import javax.swing.BoxLayout;
 import javax.swing.JButton;
+import javax.swing.JComboBox;
 import javax.swing.JComponent;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
@@ -127,6 +144,7 @@ public class JEIPanel extends PluginPanel {
     @Inject private BuyLimitService buyLimitService;
     @Inject private MonsterService monsterService;
     @Inject private WikiHttp wikiHttp;
+    @Inject private PlayerProgress progress;
 
     private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor(daemon("jei-schedule"));
     private final ExecutorService searchExecutor = Executors.newSingleThreadExecutor(daemon("jei-search"));
@@ -198,6 +216,17 @@ public class JEIPanel extends PluginPanel {
     private final Set<String> expandedPaths = new LinkedHashSet<>();
     private final Set<String> treeFailed = new LinkedHashSet<>();
     private boolean treeLoadInFlight;
+    private ProgressSnapshot progressSnapshot = ProgressSnapshot.LOGGED_OUT;
+    private WornGear wornGear = WornGear.LOGGED_OUT;
+    private boolean compareOpen;
+    private final Set<String> compareStarted = new LinkedHashSet<>();
+    private final Set<String> compareFailed = new LinkedHashSet<>();
+    private boolean syncingFilters;
+    private String gridMode = "grid";
+    private JComboBox<SearchCriteria.Trade> tradeCombo;
+    private JComboBox<SearchCriteria.Members> membersCombo;
+    private JComboBox<SearchCriteria.Equip> equipCombo;
+    private JComboBox<SearchCriteria.SlotChoice> slotCombo;
     private PriceQuote shownPrice = PriceQuote.MISSING;
     private PriceQuote shownNature = PriceQuote.MISSING;
     private boolean pricesFetched;
@@ -233,6 +262,7 @@ public class JEIPanel extends PluginPanel {
         north.setLayout(new BoxLayout(north, BoxLayout.Y_AXIS));
         north.setBackground(ColorScheme.DARK_GRAY_COLOR);
         north.add(buildSearchBar());
+        north.add(buildFilterBar());
         north.add(indexStatus);
         north.add(historyPanel);
         add(north, BorderLayout.NORTH);
@@ -347,6 +377,23 @@ public class JEIPanel extends PluginPanel {
         if ("favourites".equals(key) || "recent".equals(key) || "ironmanMode".equals(key)) {
             return;
         }
+        if (isSearchFilterKey(key)) {
+            syncFilterControls();
+            refreshFilteredResults();
+            return;
+        }
+        if ("dropSort".equals(key)) {
+            if ("drops".equals(gridMode)) {
+                SwingUtilities.invokeLater(this::showDropsExpanded);
+            }
+            return;
+        }
+        if ("showRequirementChecks".equals(key) || "showEquipmentCompare".equals(key)) {
+            if (shownItem != null && shownDetails != null) {
+                renderDetails();
+            }
+            return;
+        }
         if ("detailRatio".equals(key)) {
             dividerApplied = true;
             applyDividerFromConfig();
@@ -413,6 +460,44 @@ public class JEIPanel extends PluginPanel {
             renderDetails();
         } else {
             updateOwnedHeader();
+        }
+    }
+
+    /** Real levels and quest states. Logged-out snapshots draw requirements with no judgment. */
+    public void onProgress(ProgressSnapshot snapshot) {
+        if (!SwingUtilities.isEventDispatchThread()) {
+            SwingUtilities.invokeLater(() -> onProgress(snapshot));
+            return;
+        }
+        if (closed) {
+            return;
+        }
+        ProgressSnapshot next = snapshot == null ? ProgressSnapshot.LOGGED_OUT : snapshot;
+        if (next.equals(progressSnapshot)) {
+            return;
+        }
+        progressSnapshot = next;
+        if (initialised && shownItem != null && shownDetails != null) {
+            renderDetails();
+        }
+    }
+
+    /** Worn item ids. Wiki pages for those items load only while the comparison is open. */
+    public void onWornChanged(WornGear gear) {
+        if (!SwingUtilities.isEventDispatchThread()) {
+            SwingUtilities.invokeLater(() -> onWornChanged(gear));
+            return;
+        }
+        if (closed) {
+            return;
+        }
+        WornGear next = gear == null ? WornGear.LOGGED_OUT : gear;
+        if (next.equals(wornGear)) {
+            return;
+        }
+        wornGear = next;
+        if (initialised && compareOpen && shownItem != null && shownDetails != null) {
+            renderDetails();
         }
     }
 
@@ -484,6 +569,82 @@ public class JEIPanel extends PluginPanel {
         row.add(searchBar, BorderLayout.CENTER);
         row.add(favToggle, BorderLayout.EAST);
         return row;
+    }
+
+    private JPanel buildFilterBar() {
+        JPanel bar = new JPanel(new WrapLayout(FlowLayout.LEFT, 4, 2)) {
+            @Override
+            public Dimension getMaximumSize() {
+                Dimension preferred = getPreferredSize();
+                return new Dimension(Integer.MAX_VALUE, preferred.height);
+            }
+        };
+        bar.setBackground(ColorScheme.DARK_GRAY_COLOR);
+        bar.setAlignmentX(LEFT_ALIGNMENT);
+        tradeCombo = filterCombo(SearchCriteria.Trade.values(), config.filterTradeable(), "filterTradeable");
+        membersCombo = filterCombo(SearchCriteria.Members.values(), config.filterMembers(), "filterMembers");
+        equipCombo = filterCombo(SearchCriteria.Equip.values(), config.filterEquipable(), "filterEquipable");
+        slotCombo = filterCombo(SearchCriteria.SlotChoice.values(), config.filterSlot(), "filterSlot");
+        bar.add(tradeCombo);
+        bar.add(membersCombo);
+        bar.add(equipCombo);
+        bar.add(slotCombo);
+        return bar;
+    }
+
+    private <E> JComboBox<E> filterCombo(E[] values, E selected, String key) {
+        JComboBox<E> combo = new JComboBox<>(values);
+        style.apply(combo, "small");
+        combo.setSelectedItem(selected == null ? values[0] : selected);
+        combo.addActionListener(e -> {
+            if (syncingFilters) {
+                return;
+            }
+            configManager.setConfiguration("osrjei", key, combo.getSelectedItem());
+        });
+        return combo;
+    }
+
+    private void syncFilterControls() {
+        if (tradeCombo == null) {
+            return;
+        }
+        syncingFilters = true;
+        try {
+            tradeCombo.setSelectedItem(config.filterTradeable());
+            membersCombo.setSelectedItem(config.filterMembers());
+            equipCombo.setSelectedItem(config.filterEquipable());
+            slotCombo.setSelectedItem(config.filterSlot());
+        } finally {
+            syncingFilters = false;
+        }
+    }
+
+    private static boolean isSearchFilterKey(String key) {
+        return "filterTradeable".equals(key)
+            || "filterMembers".equals(key)
+            || "filterEquipable".equals(key)
+            || "filterSlot".equals(key);
+    }
+
+    private SearchCriteria searchCriteria() {
+        return new SearchCriteria(
+            config.filterTradeable(),
+            config.filterMembers(),
+            config.filterEquipable(),
+            config.filterSlot()
+        );
+    }
+
+    private void refreshFilteredResults() {
+        if (favToggle != null && favToggle.isSelected()) {
+            lastGridItems = buildFavouritesList();
+            populateGrid(lastGridItems);
+            return;
+        }
+        if (lastSearchQuery != null && !lastSearchQuery.isEmpty()) {
+            onSearch(lastSearchQuery);
+        }
     }
 
     private JComponent buildContent() {
@@ -674,7 +835,7 @@ public class JEIPanel extends PluginPanel {
                 String key = name.toLowerCase(java.util.Locale.ROOT);
                 SearchItem item = indexingByName.get(key);
                 if (item == null) {
-                    item = new SearchItem(id, name, comp.isMembers(), comp.getHaPrice());
+                    item = new SearchItem(id, name, comp.isMembers(), comp.getHaPrice(), traitsFor(id, comp));
                     indexingByName.put(key, item);
                 }
                 indexingById.put(id, item);
@@ -753,7 +914,7 @@ public class JEIPanel extends PluginPanel {
             if (gen != searchGeneration.get()) {
                 return;
             }
-            List<SearchItem> results = ItemSearch.rank(allItems, lower, SEARCH_LIMIT);
+            List<SearchItem> results = ItemSearch.rank(allItems, lower, SEARCH_LIMIT, searchCriteria());
             SwingUtilities.invokeLater(() -> {
                 if (gen != searchGeneration.get()) {
                     return;
@@ -996,7 +1157,8 @@ public class JEIPanel extends PluginPanel {
             }
         }
 
-        populateEquipment(details.stats);
+        syncQuestWatch();
+        populateEquipment(details.stats, details.weight, details.requirements);
         populateShops(details.shops, geBuy);
         populateRecipes(details.recipes);
         populateUsedIn(details.products);
@@ -1121,7 +1283,7 @@ public class JEIPanel extends PluginPanel {
         };
     }
 
-    private void populateEquipment(Optional<EquipmentStats> statsOpt) {
+    private void populateEquipment(Optional<EquipmentStats> statsOpt, double weight, ItemRequirements requirements) {
         equipmentContent.removeAll();
         if (statsOpt == null || !statsOpt.isPresent()) {
             equipmentSection.setVisible(false);
@@ -1133,6 +1295,7 @@ public class JEIPanel extends PluginPanel {
             meta += "  \u00b7  Speed " + stats.speed;
         }
         equipmentContent.add(htmlLine(escape(meta), "#c8c8c8", "bodyBold"));
+        fillRequirements(requirements);
 
         StringBuilder table = new StringBuilder("<html><table cellspacing='2' cellpadding='0'>");
         table.append("<tr><td></td><td><font color='#96c8ff'><b>&nbsp;Atk</b></font></td>")
@@ -1164,7 +1327,197 @@ public class JEIPanel extends PluginPanel {
             }
             equipmentContent.add(htmlLine(other.toString(), "#b4dc78", "small"));
         }
+        fillComparison(stats, weight);
         equipmentSection.setVisible(true);
+    }
+
+    private void fillRequirements(ItemRequirements requirements) {
+        if (requirements == null || requirements.isEmpty() || progress == null) {
+            return;
+        }
+        boolean judge = config.showRequirementChecks();
+        for (ItemRequirements.SkillNeed skill : requirements.skills) {
+            Mark mark = progress.skill(skill.name, skill.level, judge);
+            addRequirementLine(RequirementJudge.htmlPrefix(mark) + escape(skill.name) + " " + skill.level, mark);
+        }
+        for (String quest : requirements.quests) {
+            Mark mark = progress.quest(quest, judge);
+            addRequirementLine(RequirementJudge.htmlPrefix(mark) + escape(quest), mark);
+        }
+    }
+
+    private void addRequirementLine(String html, Mark mark) {
+        WrappingLabel line = htmlLine(html, null, "small");
+        line.setForeground(mark == Mark.UNMET ? new Color(130, 130, 130) : NEUTRAL);
+        equipmentContent.add(line);
+    }
+
+    private void fillComparison(EquipmentStats stats, double weight) {
+        if (!config.showEquipmentCompare()) {
+            return;
+        }
+        JButton toggle = linkButton(compareOpen ? "Hide comparison" : "Compare with worn", "small");
+        toggle.setForeground(LINK);
+        toggle.addActionListener(e -> {
+            compareOpen = !compareOpen;
+            if (shownDetails != null) {
+                renderDetails();
+            }
+        });
+        equipmentContent.add(toggle);
+        if (!compareOpen) {
+            return;
+        }
+        if (wornGear == null || !wornGear.loggedIn) {
+            equipmentContent.add(plainLabel("Log in to compare with what you are wearing.", "small", MUTED));
+            return;
+        }
+        GearSlot slot = GearSlot.fromWiki(stats.slot);
+        if (slot == null) {
+            equipmentContent.add(plainLabel("This slot can't be compared.", "small", MUTED));
+            return;
+        }
+        int weaponId = wornGear.id(EquipmentInventorySlot.WEAPON.getSlotIdx());
+        int shieldId = wornGear.id(EquipmentInventorySlot.SHIELD.getSlotIdx());
+        int sameId = wornGear.id(slot.containerIndex());
+        LinkedHashSet<Integer> needed = new LinkedHashSet<>();
+        if (stats.twoHanded() || slot == GearSlot.WEAPON || slot == GearSlot.SHIELD) {
+            if (weaponId > 0) {
+                needed.add(weaponId);
+            }
+        }
+        if (stats.twoHanded() || slot == GearSlot.SHIELD) {
+            if (shieldId > 0) {
+                needed.add(shieldId);
+            }
+        }
+        if (slot != GearSlot.WEAPON && slot != GearSlot.SHIELD && sameId > 0) {
+            needed.add(sameId);
+        }
+        boolean waiting = false;
+        boolean blocked = false;
+        for (int id : needed) {
+            String name = nameForWorn(id);
+            if (name == null) {
+                blocked = true;
+                continue;
+            }
+            ItemDetails cached = itemDetailsService.peek(name);
+            if (cached != null) {
+                if (!cached.stats.isPresent()) {
+                    blocked = true;
+                }
+                continue;
+            }
+            if (compareFailed.contains(wornKey(name))) {
+                blocked = true;
+                continue;
+            }
+            waiting = true;
+            if (compareStarted.add(wornKey(name))) {
+                final String pendingName = name;
+                itemDetailsService.load(name).whenComplete((details, error) -> SwingUtilities.invokeLater(() -> {
+                    if (error != null) {
+                        compareFailed.add(wornKey(pendingName));
+                    }
+                    if (!closed && compareOpen && shownDetails != null) {
+                        renderDetails();
+                    }
+                }));
+            }
+        }
+        if (blocked) {
+            equipmentContent.add(plainLabel("Worn stats are unavailable for something you have equipped.", "small", MUTED));
+            return;
+        }
+        if (waiting) {
+            equipmentContent.add(plainLabel("Loading worn stats\u2026", "small", MUTED));
+            return;
+        }
+        EquipmentCompare.Result result = EquipmentCompare.compare(
+            stats,
+            weight,
+            pieceFor(weaponId),
+            pieceFor(shieldId),
+            pieceFor(sameId)
+        );
+        equipmentContent.add(plainLabel(result.note, "small", MUTED));
+        for (EquipmentCompare.Delta delta : result.deltas) {
+            Color color = delta.sign() > 0 ? GOOD : delta.sign() < 0 ? BAD : MUTED;
+            equipmentContent.add(plainLabel(delta.label + "  " + formatDelta(delta), "small", color));
+        }
+    }
+
+    private EquipmentCompare.Piece pieceFor(int itemId) {
+        if (itemId <= 0) {
+            return null;
+        }
+        String name = nameForWorn(itemId);
+        if (name == null) {
+            return null;
+        }
+        ItemDetails details = itemDetailsService.peek(name);
+        if (details == null || !details.stats.isPresent()) {
+            return null;
+        }
+        return new EquipmentCompare.Piece(details.stats.get(), details.weight);
+    }
+
+    private String nameForWorn(int itemId) {
+        SearchItem item = idIndex.get(itemId);
+        return item == null ? null : item.name;
+    }
+
+    private static String wornKey(String name) {
+        return name == null ? "" : name.toLowerCase(Locale.ROOT);
+    }
+
+    private static String formatDelta(EquipmentCompare.Delta delta) {
+        if ("Weight".equals(delta.label)) {
+            return String.format(Locale.ROOT, "%+.3f kg", delta.amount);
+        }
+        if ("Magic dmg".equals(delta.label)) {
+            return String.format(Locale.ROOT, "%+.0f%%", delta.amount);
+        }
+        return String.format(Locale.ROOT, "%+.0f", delta.amount);
+    }
+
+    private int traitsFor(int id, ItemComposition comp) {
+        boolean equipable = false;
+        int slot = -1;
+        try {
+            ItemStats stats = itemManager.getItemStats(id);
+            if (stats != null && stats.isEquipable()) {
+                ItemEquipmentStats equipment = stats.getEquipment();
+                if (equipment != null) {
+                    equipable = true;
+                    slot = equipment.getSlot();
+                }
+            }
+        } catch (RuntimeException ignored) {
+            equipable = false;
+            slot = -1;
+        }
+        return ItemTraits.pack(comp.isMembers(), comp.isTradeable(), equipable, slot);
+    }
+
+    private void syncQuestWatch() {
+        if (progress == null) {
+            return;
+        }
+        if (!config.showRequirementChecks() || shownDetails == null || shownDetails.requirements == null) {
+            progress.watch(Collections.<String>emptyList());
+            return;
+        }
+        progress.watch(shownDetails.requirements.quests);
+    }
+
+    private RecipeTreeView.Marks recipeMarks() {
+        if (progress == null) {
+            return null;
+        }
+        boolean judge = config.showRequirementChecks();
+        return recipe -> progress.recipe(recipe, judge);
     }
 
     private void populateShops(List<ShopEntry> shops, long geBuy) {
@@ -1201,7 +1554,7 @@ public class JEIPanel extends PluginPanel {
         Integer rootId = shownItem == null ? null : shownItem.id;
         ItemDetails root = shownDetails == null ? ItemDetails.EMPTY : shownDetails;
         BuildExpander.Result tree = BuildExpander.expandSelected(rootName, rootId, root, viewPages(), expandedPaths);
-        RecipeTreeView.fill(recipeBody, style, tree, !expandedPaths.isEmpty(), treeActions(), ownedCounts());
+        RecipeTreeView.fill(recipeBody, style, tree, !expandedPaths.isEmpty(), treeActions(), ownedCounts(), recipeMarks());
         recipeSection.setVisible(true);
         if (!tree.pending.isEmpty()) {
             scheduleTreeLoads(tree.pending);
@@ -1433,6 +1786,7 @@ public class JEIPanel extends PluginPanel {
         }
         usedInListPanel.revalidate();
         usedInListPanel.repaint();
+        gridMode = "usedIn";
         gridCardLayout.show(gridCardPanel, "usedIn");
     }
 
@@ -1442,15 +1796,37 @@ public class JEIPanel extends PluginPanel {
         usedInListPanel.add(backToGridButton());
         usedInListPanel.add(plainLabel("Dropped by:  " + selectedItemName, "title", Color.WHITE));
         usedInListPanel.add(plainLabel("Click a monster to see its locations", "small", MUTED));
+        usedInListPanel.add(dropSortControl());
         usedInListPanel.add(Box.createRigidArea(new Dimension(0, 6)));
         List<DropEntry> drops = shownDetails == null ? Collections.emptyList() : shownDetails.drops;
-        for (DropEntry drop : drops) {
+        DropSort sort = config.dropSort() == null ? DropSort.RATE : config.dropSort();
+        for (DropEntry drop : DropSorter.ordered(drops, sort)) {
             usedInListPanel.add(buildDropRow(drop));
             usedInListPanel.add(Box.createRigidArea(new Dimension(0, 3)));
         }
         usedInListPanel.revalidate();
         usedInListPanel.repaint();
+        gridMode = "drops";
         gridCardLayout.show(gridCardPanel, "usedIn");
+    }
+
+    private JComboBox<DropSort> dropSortControl() {
+        JComboBox<DropSort> combo = new JComboBox<>(DropSort.values());
+        style.apply(combo, "small");
+        DropSort selected = config.dropSort() == null ? DropSort.RATE : config.dropSort();
+        combo.setSelectedItem(selected);
+        combo.setAlignmentX(LEFT_ALIGNMENT);
+        combo.setMaximumSize(new Dimension(Integer.MAX_VALUE, combo.getPreferredSize().height));
+        combo.addActionListener(e -> {
+            if (syncingFilters) {
+                return;
+            }
+            Object choice = combo.getSelectedItem();
+            if (choice instanceof DropSort && choice != config.dropSort()) {
+                configManager.setConfiguration("osrjei", "dropSort", choice);
+            }
+        });
+        return combo;
     }
 
     private JPanel buildDropRow(DropEntry drop) {
@@ -1458,7 +1834,8 @@ public class JEIPanel extends PluginPanel {
         appendPiece(detail, drop.getLevel() == null || drop.getLevel().isEmpty() || "?".equals(drop.getLevel())
             ? "" : "Lv. " + drop.getLevel());
         appendPiece(detail, drop.getQuantity() == null || "?".equals(drop.getQuantity()) ? "" : drop.getQuantity());
-        appendPiece(detail, drop.getRate() == null || "?".equals(drop.getRate()) ? "" : drop.getRate());
+        DropRate rate = DropRate.parse(drop.getRate(), drop.getQuantity());
+        appendPiece(detail, "?".equals(rate.display) ? "" : rate.display);
         String html = "<b>" + escape(drop.getSource()) + "</b><br><font color='#999999'>"
             + escape(detail.length() == 0 ? "?" : detail.toString()) + "</font>";
         JPanel row = new JPanel(new BorderLayout());
@@ -1471,6 +1848,9 @@ public class JEIPanel extends PluginPanel {
         label.setForeground(Color.WHITE);
         label.setHtml(html);
         label.setAlignmentX(LEFT_ALIGNMENT);
+        String tip = rate.original == null || rate.original.isEmpty() ? rate.display : rate.original;
+        row.setToolTipText(tip);
+        label.setToolTipText(tip);
         row.add(label, BorderLayout.CENTER);
         capHeight(row);
         String monsterName = drop.getSource();
@@ -1503,6 +1883,7 @@ public class JEIPanel extends PluginPanel {
         usedInListPanel.add(plainLabel("Loading location data\u2026", "small", MUTED));
         usedInListPanel.revalidate();
         usedInListPanel.repaint();
+        gridMode = "monster";
         gridCardLayout.show(gridCardPanel, "usedIn");
         final String pending = monsterName;
         wikiHttp.beginRequest();
@@ -1569,6 +1950,7 @@ public class JEIPanel extends PluginPanel {
     }
 
     private void showGridCard() {
+        gridMode = "grid";
         if (gridCardLayout != null) {
             gridCardLayout.show(gridCardPanel, "grid");
         }
@@ -1720,7 +2102,7 @@ public class JEIPanel extends PluginPanel {
         synchronized (favouritesLock) {
             for (int id : favouriteIds) {
                 SearchItem item = idIndex.get(id);
-                if (item != null) {
+                if (item != null && searchCriteria().matches(item)) {
                     result.add(item);
                 }
             }

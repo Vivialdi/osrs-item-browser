@@ -19,6 +19,15 @@ public final class RecipeText {
                 info.append(" (Lv. ").append(recipe.level).append(")");
             }
         }
+        if (recipe.skill2 != null && !recipe.skill2.isEmpty()) {
+            if (info.length() > 0) {
+                info.append("  \u00b7  ");
+            }
+            info.append(recipe.skill2);
+            if (recipe.level2 > 0) {
+                info.append(" (Lv. ").append(recipe.level2).append(")");
+            }
+        }
         if (recipe.facility != null && !recipe.facility.isEmpty()) {
             if (info.length() > 0) {
                 info.append("  \u00b7  ");

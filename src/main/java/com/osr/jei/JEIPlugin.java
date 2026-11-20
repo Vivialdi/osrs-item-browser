@@ -1,10 +1,12 @@
 package com.osr.jei;
 
 import com.google.inject.Provides;
+import com.osr.jei.equipment.WornGear;
 import com.osr.jei.ironman.IronmanAccounts;
 import com.osr.jei.lookup.CanonicalIds;
 import com.osr.jei.lookup.LookupTargets;
 import com.osr.jei.owned.OwnedItems;
+import com.osr.jei.requirements.PlayerProgress;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
 import net.runelite.api.GameState;
@@ -13,10 +15,13 @@ import net.runelite.api.ItemComposition;
 import net.runelite.api.ItemContainer;
 import net.runelite.api.MenuAction;
 import net.runelite.api.MenuEntry;
+import net.runelite.api.EquipmentInventorySlot;
 import net.runelite.api.events.AccountHashChanged;
 import net.runelite.api.events.GameStateChanged;
+import net.runelite.api.events.GameTick;
 import net.runelite.api.events.ItemContainerChanged;
 import net.runelite.api.events.MenuEntryAdded;
+import net.runelite.api.events.StatChanged;
 import net.runelite.api.events.VarbitChanged;
 import net.runelite.api.gameval.InventoryID;
 import net.runelite.api.gameval.VarbitID;
@@ -40,6 +45,7 @@ import java.awt.Graphics2D;
 import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -61,11 +67,13 @@ public class JEIPlugin extends Plugin {
     @Inject private ItemManager itemManager;
     @Inject private JEIConfig config;
     @Inject private JEIPanel panel;
+    @Inject private PlayerProgress progress;
 
     private NavigationButton navButton;
     private boolean ironmanActive;
     private boolean ironmanKnown;
     private volatile OwnedItems.Snapshot owned = OwnedItems.Snapshot.NONE;
+    private volatile WornGear worn = WornGear.LOGGED_OUT;
 
     @Override
     protected void startUp() {
@@ -75,6 +83,11 @@ public class JEIPlugin extends Plugin {
             }
             try {
                 panel.init();
+                progress.setListener(snapshot -> SwingUtilities.invokeLater(() -> {
+                    if (!panel.isClosed()) {
+                        panel.onProgress(snapshot);
+                    }
+                }));
                 navButton = NavigationButton.builder()
                     .tooltip("OSRS Item Browser")
                     .icon(createIcon())
@@ -91,6 +104,9 @@ public class JEIPlugin extends Plugin {
                     publishIronman();
                     owned = OwnedItems.Snapshot.NONE;
                     publishOwned();
+                    worn = WornGear.LOGGED_OUT;
+                    publishWorn();
+                    progress.refreshSkills();
                 });
             } catch (Exception e) {
                 log.error("OSRS Item Browser failed to start", e);
@@ -109,6 +125,24 @@ public class JEIPlugin extends Plugin {
             publishIronman();
         }
         publishOwned();
+        publishWorn();
+        progress.refreshSkills();
+    }
+
+    /** Real levels only. Boosts do not change the snapshot, so the sidebar stays still. */
+    @Subscribe
+    public void onStatChanged(StatChanged event) {
+        if (!panel.isClosed()) {
+            progress.refreshSkills();
+        }
+    }
+
+    /** Drains a quest-state refresh queued by a varbit change. One read per tick. */
+    @Subscribe
+    public void onGameTick(GameTick event) {
+        if (!panel.isClosed()) {
+            progress.readQuestsIfDirty();
+        }
     }
 
     /**
@@ -126,6 +160,9 @@ public class JEIPlugin extends Plugin {
             return;
         }
         publishOwned();
+        if (containerId == InventoryID.WORN) {
+            publishWorn();
+        }
     }
 
     /**
@@ -138,12 +175,18 @@ public class JEIPlugin extends Plugin {
         if (!panel.isClosed()) {
             publishIronman();
             publishOwned();
+            publishWorn();
+            progress.refreshSkills();
         }
     }
 
     @Subscribe
     public void onVarbitChanged(VarbitChanged event) {
-        if (panel.isClosed() || event.getVarbitId() != VarbitID.IRONMAN) {
+        if (panel.isClosed()) {
+            return;
+        }
+        progress.markQuestsDirty();
+        if (event.getVarbitId() != VarbitID.IRONMAN) {
             return;
         }
         publishIronman();
@@ -152,7 +195,9 @@ public class JEIPlugin extends Plugin {
     @Override
     protected void shutDown() {
         panel.shutdown();
+        progress.setListener(null);
         owned = OwnedItems.Snapshot.NONE;
+        worn = WornGear.LOGGED_OUT;
         SwingUtilities.invokeLater(() -> {
             if (navButton != null) {
                 clientToolbar.removeNavigation(navButton);
@@ -268,6 +313,63 @@ public class JEIPlugin extends Plugin {
             }
         }
         return OwnedItems.count(slots);
+    }
+
+    /**
+     * Worn item ids for the equipment comparison. Read on the client thread.
+     * This does not fetch wiki pages; the panel does that only after the
+     * comparison is opened.
+     */
+    private void publishWorn() {
+        if (!client.isClientThread()) {
+            clientThread.invokeLater(this::publishWorn);
+            return;
+        }
+        if (panel.isClosed()) {
+            return;
+        }
+        WornGear next = captureWorn();
+        if (next.equals(worn)) {
+            return;
+        }
+        worn = next;
+        SwingUtilities.invokeLater(() -> {
+            if (!panel.isClosed()) {
+                panel.onWornChanged(next);
+            }
+        });
+    }
+
+    private WornGear captureWorn() {
+        int[] ids = new int[WornGear.SLOTS];
+        Arrays.fill(ids, -1);
+        boolean loggedIn = false;
+        try {
+            loggedIn = client.getGameState() == GameState.LOGGED_IN;
+            if (!loggedIn) {
+                return WornGear.LOGGED_OUT;
+            }
+            ItemContainer container = client.getItemContainer(InventoryID.WORN);
+            if (container == null || container.getItems() == null) {
+                return new WornGear(true, ids);
+            }
+            Item[] items = container.getItems();
+            for (EquipmentInventorySlot slot : EquipmentInventorySlot.values()) {
+                int index = slot.getSlotIdx();
+                if (index < 0 || index >= items.length || index >= ids.length) {
+                    continue;
+                }
+                Item item = items[index];
+                if (item == null || item.getId() <= 0 || item.getQuantity() <= 0) {
+                    continue;
+                }
+                ids[index] = itemManager.canonicalize(item.getId());
+            }
+        } catch (RuntimeException ex) {
+            log.debug("Could not read worn equipment: {}", ex.getMessage());
+            return loggedIn ? new WornGear(true, ids) : WornGear.LOGGED_OUT;
+        }
+        return new WornGear(true, ids);
     }
 
     /**

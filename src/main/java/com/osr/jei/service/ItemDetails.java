@@ -4,6 +4,8 @@ import com.osr.jei.model.DropEntry;
 import com.osr.jei.model.EquipmentStats;
 import com.osr.jei.model.RecipeInfo;
 import com.osr.jei.model.ShopEntry;
+import com.osr.jei.requirements.ItemRequirements;
+import com.osr.jei.requirements.RequirementParser;
 import com.osr.jei.wiki.DropTableParser;
 import com.osr.jei.wiki.EquipmentParser;
 import com.osr.jei.wiki.HtmlSections;
@@ -33,6 +35,7 @@ public final class ItemDetails {
     public final List<ShopEntry> shops;
     public final List<DropEntry> drops;
     public final List<String> products;
+    public final ItemRequirements requirements;
 
     public ItemDetails(
         List<RecipeInfo> recipes,
@@ -42,12 +45,25 @@ public final class ItemDetails {
         List<DropEntry> drops,
         List<String> products
     ) {
+        this(recipes, stats, weight, shops, drops, products, ItemRequirements.NONE);
+    }
+
+    public ItemDetails(
+        List<RecipeInfo> recipes,
+        Optional<EquipmentStats> stats,
+        double weight,
+        List<ShopEntry> shops,
+        List<DropEntry> drops,
+        List<String> products,
+        ItemRequirements requirements
+    ) {
         this.recipes = recipes;
         this.stats = stats;
         this.weight = weight;
         this.shops = shops;
         this.drops = drops;
         this.products = products;
+        this.requirements = requirements == null ? ItemRequirements.NONE : requirements;
     }
 
     public static ItemDetails from(PageContent page) {
@@ -63,7 +79,8 @@ public final class ItemDetails {
             EquipmentParser.parseWeight(page.wikitext),
             ShopTableParser.parse(shopsHtml),
             DropTableParser.parse(sourcesHtml),
-            UsedInService.parseProductsTable(productsHtml)
+            UsedInService.parseProductsTable(productsHtml),
+            RequirementParser.parse(page.wikitext)
         );
     }
 
