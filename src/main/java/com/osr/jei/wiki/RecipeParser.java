@@ -57,6 +57,11 @@ public final class RecipeParser {
         }
 
         double xp = WikiText.firstDouble(WikiText.clean(WikiText.coalesce(p, "skill1exp", "skill2exp", "experience", "xp")));
+        int outputQuantity = WikiText.firstInt(WikiText.clean(WikiText.coalesce(p, "outputquantity", "outqty")));
+        if (outputQuantity <= 0) {
+            outputQuantity = 1;
+        }
+        String outputName = WikiText.clean(WikiText.coalesce(p, "outputname", "output"));
 
         List<RecipeIngredient> ingredients = new ArrayList<>();
         for (int i = 1; i <= 15; i++) {
@@ -85,6 +90,6 @@ public final class RecipeParser {
         if (skill.isEmpty() && ingredients.isEmpty()) {
             return null;
         }
-        return new RecipeInfo(skill, level, facility, xp, ingredients);
+        return new RecipeInfo(skill, level, facility, xp, ingredients, outputQuantity, outputName);
     }
 }

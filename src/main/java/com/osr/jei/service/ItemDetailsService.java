@@ -27,6 +27,14 @@ public class ItemDetailsService {
         this.pages = pages;
     }
 
+    /** Cached parse, or null when this name has not been loaded. Does not fetch. */
+    public ItemDetails peek(String itemName) {
+        if (itemName == null || itemName.isEmpty()) {
+            return null;
+        }
+        return cache.get(itemName.toLowerCase(Locale.ROOT));
+    }
+
     public CompletableFuture<ItemDetails> load(String itemName) {
         if (itemName == null || itemName.isEmpty()) {
             return CompletableFuture.completedFuture(ItemDetails.EMPTY);

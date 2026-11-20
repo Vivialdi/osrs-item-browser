@@ -1,17 +1,27 @@
 package com.osr.jei;
 
 import com.google.inject.Provides;
+import com.osr.jei.ironman.IronmanAccounts;
+import com.osr.jei.lookup.CanonicalIds;
+import com.osr.jei.lookup.LookupTargets;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
 import net.runelite.api.GameState;
+import net.runelite.api.ItemComposition;
 import net.runelite.api.MenuAction;
+import net.runelite.api.MenuEntry;
+import net.runelite.api.events.AccountHashChanged;
 import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.MenuEntryAdded;
+import net.runelite.api.events.VarbitChanged;
+import net.runelite.api.gameval.VarbitID;
 import net.runelite.api.widgets.Widget;
+import net.runelite.api.widgets.WidgetUtil;
 import net.runelite.client.callback.ClientThread;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.events.ConfigChanged;
+import net.runelite.client.game.ItemManager;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.ui.ClientToolbar;
@@ -24,9 +34,11 @@ import java.awt.Font;
 import java.awt.Graphics2D;
 import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
- * Sidebar item browser. Right-click an inventory item or a ground item and choose JEI Lookup.
+ * Sidebar item browser. Right-click an inventory, bank, worn, or ground item and choose JEI Lookup.
  */
 @Slf4j
 @PluginDescriptor(
@@ -39,9 +51,13 @@ public class JEIPlugin extends Plugin {
     @Inject private Client client;
     @Inject private ClientThread clientThread;
     @Inject private ClientToolbar clientToolbar;
+    @Inject private ItemManager itemManager;
+    @Inject private JEIConfig config;
     @Inject private JEIPanel panel;
 
     private NavigationButton navButton;
+    private boolean ironmanActive;
+    private boolean ironmanKnown;
 
     @Override
     protected void startUp() {
@@ -60,9 +76,11 @@ public class JEIPlugin extends Plugin {
                 clientToolbar.addNavigation(navButton);
                 log.info("OSRS Item Browser started");
                 clientThread.invokeLater(() -> {
-                    if (!panel.isClosed()) {
-                        panel.ensureItemIndex(client.getGameState());
+                    if (panel.isClosed()) {
+                        return;
                     }
+                    panel.ensureItemIndex(client.getGameState());
+                    publishIronman();
                 });
             } catch (Exception e) {
                 log.error("OSRS Item Browser failed to start", e);
@@ -77,6 +95,29 @@ public class JEIPlugin extends Plugin {
         }
         GameState state = event.getGameState();
         panel.ensureItemIndex(state);
+        if (state == GameState.LOGIN_SCREEN || state == GameState.LOGGING_IN || state == GameState.LOGGED_IN) {
+            publishIronman();
+        }
+    }
+
+    /**
+     * The logged-in account changed. {@code AccountHashChanged} is the client
+     * event for that; the ironman varbit and game state carry the type used
+     * by AUTO mode.
+     */
+    @Subscribe
+    public void onAccountHashChanged(AccountHashChanged event) {
+        if (!panel.isClosed()) {
+            publishIronman();
+        }
+    }
+
+    @Subscribe
+    public void onVarbitChanged(VarbitChanged event) {
+        if (panel.isClosed() || event.getVarbitId() != VarbitID.IRONMAN) {
+            return;
+        }
+        publishIronman();
     }
 
     @Override
@@ -97,17 +138,51 @@ public class JEIPlugin extends Plugin {
             return;
         }
         String key = event.getKey();
+        if ("ironmanMode".equals(key)) {
+            clientThread.invokeLater(this::publishIronman);
+            return;
+        }
         SwingUtilities.invokeLater(() -> panel.onConfigChanged(key));
     }
 
     /**
-     * Adds JEI Lookup above Examine on ground items and on widget item examines.
-     * Inventory examines use {@link MenuAction#CC_OP_LOW_PRIORITY}; the old
-     * {@code EXAMINE_ITEM} action is deprecated.
+     * Reads the account-type varbit on the client thread and refreshes the
+     * open detail view only when the effective ironman flag actually changes.
+     */
+    private void publishIronman() {
+        if (panel.isClosed()) {
+            return;
+        }
+        int accountType = 0;
+        try {
+            accountType = client.getVarbitValue(VarbitID.IRONMAN);
+        } catch (Exception ignored) {
+            accountType = 0;
+        }
+        boolean active = IronmanAccounts.effective(config.ironmanMode(), accountType);
+        if (ironmanKnown && !IronmanAccounts.shouldRefreshDetail(ironmanActive, active)) {
+            return;
+        }
+        ironmanActive = active;
+        ironmanKnown = true;
+        SwingUtilities.invokeLater(() -> {
+            if (!panel.isClosed()) {
+                panel.onIronmanChanged(active);
+            }
+        });
+    }
+
+    /**
+     * Adds one JEI Lookup entry on ground items and on Examine for inventory,
+     * bank (including placeholders and the bank side inventory), worn equipment,
+     * and the equipment stats interface.
      */
     @Subscribe
     public void onMenuEntryAdded(MenuEntryAdded event) {
         if (client.getMenu() == null || panel.isClosed()) {
+            return;
+        }
+        if (LookupTargets.alreadyOffered(optionTexts(client.getMenu().getMenuEntries()))) {
             return;
         }
         int itemId = itemIdForLookup(event);
@@ -120,32 +195,63 @@ public class JEIPlugin extends Plugin {
             .setTarget(event.getTarget())
             .setType(MenuAction.RUNELITE)
             .setDeprioritized(true)
-            .onClick(e -> SwingUtilities.invokeLater(() -> {
-                if (navButton != null) {
-                    clientToolbar.openPanel(navButton);
-                }
-                panel.lookupItem(lookupId);
-            }));
+            .onClick(e -> clientThread.invoke(() -> openLookup(lookupId)));
+    }
+
+    private void openLookup(int itemId) {
+        int resolved = canonicalItemId(itemId);
+        SwingUtilities.invokeLater(() -> {
+            if (navButton != null) {
+                clientToolbar.openPanel(navButton);
+            }
+            panel.lookupItem(resolved);
+        });
+    }
+
+    /**
+     * Notes and placeholders are resolved from the composition, then
+     * {@code itemManager.canonicalize} maps worn variants. Client thread only.
+     */
+    private int canonicalItemId(int itemId) {
+        if (itemId < 0) {
+            return -1;
+        }
+        try {
+            ItemComposition composition = itemManager.getItemComposition(itemId);
+            int fromComposition = CanonicalIds.resolve(
+                itemId,
+                composition.getNote(),
+                composition.getLinkedNoteId(),
+                composition.getPlaceholderTemplateId(),
+                composition.getPlaceholderId());
+            return itemManager.canonicalize(fromComposition);
+        } catch (Exception ignored) {
+            return itemId;
+        }
     }
 
     private int itemIdForLookup(MenuEntryAdded event) {
         int type = event.getType();
-        if (type == MenuAction.EXAMINE_ITEM_GROUND.getId()) {
+        if (LookupTargets.groundExamine(type)) {
             return event.getIdentifier() >= 0 ? event.getIdentifier() : -1;
         }
-        if (type == MenuAction.CC_OP_LOW_PRIORITY.getId() && "Examine".equals(event.getOption())) {
-            if (event.getItemId() > 0) {
-                return event.getItemId();
-            }
-            return itemIdFromWidget(event.getActionParam1(), event.getActionParam0());
+        int group = WidgetUtil.componentToInterface(event.getActionParam1());
+        if (!LookupTargets.widgetExamine(type, event.getOption(), group)) {
+            return -1;
         }
-        return -1;
+        if (event.getItemId() > 0) {
+            return event.getItemId();
+        }
+        return itemIdFromWidget(event.getActionParam1(), event.getActionParam0());
     }
 
     private int itemIdFromWidget(int widgetId, int childIndex) {
         Widget widget = client.getWidget(widgetId);
         if (widget == null) {
             return -1;
+        }
+        if (widget.getItemId() > 0) {
+            return widget.getItemId();
         }
         Widget child = widget.getChild(childIndex);
         if (child != null && child.getItemId() > 0) {
@@ -156,6 +262,19 @@ public class JEIPlugin extends Plugin {
             return worn.getItemId();
         }
         return -1;
+    }
+
+    private static List<String> optionTexts(MenuEntry[] entries) {
+        List<String> options = new ArrayList<>();
+        if (entries == null) {
+            return options;
+        }
+        for (MenuEntry entry : entries) {
+            if (entry != null) {
+                options.add(entry.getOption());
+            }
+        }
+        return options;
     }
 
     @Provides

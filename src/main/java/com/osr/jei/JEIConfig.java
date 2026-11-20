@@ -1,5 +1,6 @@
 package com.osr.jei;
 
+import com.osr.jei.ironman.IronmanMode;
 import com.osr.jei.ui.FontFamilyChoice;
 import com.osr.jei.ui.FontStyleChoice;
 import net.runelite.client.config.Config;
@@ -83,5 +84,15 @@ public interface JEIConfig extends Config {
     @Range(min = 25, max = 75)
     default int detailRatio() {
         return 45;
+    }
+
+    @ConfigItem(
+        keyName = "ironmanMode",
+        name = "Ironman mode",
+        description = "Auto follows the logged-in account: Ironman, Hardcore, Ultimate, and Group Ironman accounts show shops, drops, and crafting before Grand Exchange info. On and Off override that, including at the login screen. Grand Exchange prices stay hidden when Show GE Prices is off.",
+        position = 7
+    )
+    default IronmanMode ironmanMode() {
+        return IronmanMode.AUTO;
     }
 }

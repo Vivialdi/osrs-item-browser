@@ -1,10 +1,13 @@
 package com.osr.jei;
 
+import com.osr.jei.crafting.BuildExpander;
+import com.osr.jei.crafting.RecipePages;
+import com.osr.jei.ironman.DetailLayout;
+import com.osr.jei.ironman.IronmanAccounts;
+import com.osr.jei.ironman.TradeCopy;
 import com.osr.jei.model.DropEntry;
 import com.osr.jei.model.EquipmentStats;
 import com.osr.jei.model.MonsterInfo;
-import com.osr.jei.model.RecipeInfo;
-import com.osr.jei.model.RecipeIngredient;
 import com.osr.jei.model.SearchItem;
 import com.osr.jei.model.ShopEntry;
 import com.osr.jei.pricing.Alchemy;
@@ -14,6 +17,7 @@ import com.osr.jei.service.ItemDetails;
 import com.osr.jei.service.ItemDetailsService;
 import com.osr.jei.service.MonsterService;
 import com.osr.jei.service.PriceService;
+import com.osr.jei.ui.RecipeTreeView;
 import com.osr.jei.ui.SplitLayout;
 import com.osr.jei.ui.UiStyle;
 import com.osr.jei.ui.WrappingLabel;
@@ -72,6 +76,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -163,7 +168,9 @@ public class JEIPanel extends PluginPanel {
     private JButton usedInButton;
     private JButton dropsButton;
     private JButton wikiButton;
+    private JPanel nameRow;
     private JLabel lblName;
+    private JLabel lblIronman;
     private JLabel lblPrice;
     private JLabel lblMembersWeight;
     private JLabel lblHaAlch;
@@ -178,6 +185,10 @@ public class JEIPanel extends PluginPanel {
     private String selectedItemName = "";
     private SearchItem shownItem;
     private ItemDetails shownDetails;
+    private boolean ironmanActive;
+    private final Set<String> expandedPaths = new LinkedHashSet<>();
+    private final Set<String> treeFailed = new LinkedHashSet<>();
+    private boolean treeLoadInFlight;
     private PriceQuote shownPrice = PriceQuote.MISSING;
     private PriceQuote shownNature = PriceQuote.MISSING;
     private boolean pricesFetched;
@@ -321,7 +332,7 @@ public class JEIPanel extends PluginPanel {
         if (closed || !initialised) {
             return;
         }
-        if ("favourites".equals(key) || "recent".equals(key)) {
+        if ("favourites".equals(key) || "recent".equals(key) || "ironmanMode".equals(key)) {
             return;
         }
         if ("detailRatio".equals(key)) {
@@ -341,6 +352,29 @@ public class JEIPanel extends PluginPanel {
         }
         revalidate();
         repaint();
+    }
+
+    /**
+     * Applies the effective ironman layout. No-ops when the flag is unchanged,
+     * and never rebuilds the item index.
+     */
+    public void onIronmanChanged(boolean active) {
+        if (!SwingUtilities.isEventDispatchThread()) {
+            SwingUtilities.invokeLater(() -> onIronmanChanged(active));
+            return;
+        }
+        if (!IronmanAccounts.shouldRefreshDetail(ironmanActive, active)) {
+            return;
+        }
+        ironmanActive = active;
+        if (!initialised) {
+            return;
+        }
+        updateIronmanBadge();
+        applySectionOrder();
+        if (shownItem != null && shownDetails != null) {
+            renderDetails();
+        }
     }
 
     public void lookupItem(int itemId) {
@@ -472,7 +506,17 @@ public class JEIPanel extends PluginPanel {
             }
         });
 
-        JPanel nameRow = new JPanel(new BorderLayout(4, 0)) {
+        lblIronman = plainLabel("Ironman", "small", new Color(140, 175, 140));
+        lblIronman.setVisible(false);
+
+        JPanel nameStack = new JPanel();
+        nameStack.setLayout(new BoxLayout(nameStack, BoxLayout.Y_AXIS));
+        nameStack.setOpaque(false);
+        nameStack.setAlignmentX(LEFT_ALIGNMENT);
+        nameStack.add(lblName);
+        nameStack.add(lblIronman);
+
+        nameRow = new JPanel(new BorderLayout(4, 0)) {
             @Override
             public Dimension getMaximumSize() {
                 Dimension preferred = getPreferredSize();
@@ -481,7 +525,7 @@ public class JEIPanel extends PluginPanel {
         };
         nameRow.setBackground(ColorScheme.DARKER_GRAY_COLOR);
         nameRow.setAlignmentX(LEFT_ALIGNMENT);
-        nameRow.add(lblName, BorderLayout.CENTER);
+        nameRow.add(nameStack, BorderLayout.CENTER);
         nameRow.add(starButton, BorderLayout.EAST);
 
         lblMembersWeight = plainLabel(" ", "small", MUTED);
@@ -516,25 +560,49 @@ public class JEIPanel extends PluginPanel {
         wikiButton.addActionListener(e -> openWiki(selectedItemName));
         wikiButton.setVisible(false);
 
+        applySectionOrder();
+        return detailPanel;
+    }
+
+    private void applySectionOrder() {
+        if (detailPanel == null) {
+            return;
+        }
+        detailPanel.removeAll();
         detailPanel.add(backButton);
         detailPanel.add(Box.createRigidArea(new Dimension(0, 4)));
         detailPanel.add(nameRow);
         detailPanel.add(Box.createRigidArea(new Dimension(0, 3)));
         detailPanel.add(lblMembersWeight);
         detailPanel.add(Box.createRigidArea(new Dimension(0, 4)));
-        detailPanel.add(lblPrice);
-        detailPanel.add(Box.createRigidArea(new Dimension(0, 2)));
-        detailPanel.add(lblHaAlch);
-        detailPanel.add(Box.createRigidArea(new Dimension(0, 6)));
-        detailPanel.add(equipmentSection);
-        detailPanel.add(shopsSection);
-        detailPanel.add(usedInButton);
-        detailPanel.add(dropsButton);
-        detailPanel.add(Box.createRigidArea(new Dimension(0, 6)));
-        detailPanel.add(recipeSection);
-        detailPanel.add(Box.createRigidArea(new Dimension(0, 6)));
+        for (String section : DetailLayout.order(ironmanActive)) {
+            detailPanel.add(sectionComponent(section));
+            detailPanel.add(Box.createRigidArea(new Dimension(0, 4)));
+        }
         detailPanel.add(wikiButton);
-        return detailPanel;
+        detailPanel.revalidate();
+        detailPanel.repaint();
+    }
+
+    private JComponent sectionComponent(String section) {
+        switch (section) {
+            case DetailLayout.GE:
+                return lblPrice;
+            case DetailLayout.ALCH:
+                return lblHaAlch;
+            case DetailLayout.EQUIPMENT:
+                return equipmentSection;
+            case DetailLayout.SHOPS:
+                return shopsSection;
+            case DetailLayout.USED_IN:
+                return usedInButton;
+            case DetailLayout.DROPS:
+                return dropsButton;
+            case DetailLayout.CRAFTING:
+                return recipeSection;
+            default:
+                return new JPanel();
+        }
     }
 
     private void scanChunk(int start) {
@@ -739,6 +807,9 @@ public class JEIPanel extends PluginPanel {
         }
         int gen = detailGeneration.incrementAndGet();
         monsterGeneration.incrementAndGet();
+        expandedPaths.clear();
+        treeFailed.clear();
+        treeLoadInFlight = false;
         wikiHttp.beginRequest();
         selectedItemName = item.name;
         shownItem = item;
@@ -761,7 +832,7 @@ public class JEIPanel extends PluginPanel {
         }
         // One wiki parse covers recipes, equipment, shops, products, and drops.
         // Prices are a separate bulk snapshot, and only when the setting is on.
-        boolean fetchPrices = config.showPrices();
+        boolean fetchPrices = TradeCopy.shouldFetchGePrices(config.showPrices());
         CompletableFuture<ItemDetails> detailsFuture = itemDetailsService.load(item.name);
         CompletableFuture<PriceQuote> priceFuture = fetchPrices
             ? priceService.getQuote(item.id).exceptionally(error -> priceFallback(error))
@@ -812,6 +883,8 @@ public class JEIPanel extends PluginPanel {
         updateStarButton(item);
         starButton.setVisible(true);
         lblMembersWeight.setText(item.members ? "Members" : "F2P");
+        updateIronmanBadge();
+        lblPrice.setForeground(ironmanActive ? MUTED : GOLD);
         lblPrice.setText(config.showPrices() ? "Loading..." : " ");
         lblHaAlch.setText(" ");
         equipmentSection.setVisible(false);
@@ -842,31 +915,25 @@ public class JEIPanel extends PluginPanel {
             weight = details.weight == 0.0 ? "  \u00b7  0 kg" : String.format("  \u00b7  %.3g kg", details.weight);
         }
         lblMembersWeight.setText(members + weight);
+        updateIronmanBadge();
 
-        if (!config.showPrices()) {
-            lblPrice.setText(" ");
-        } else if (shownPrice == null || !shownPrice.known()) {
-            lblPrice.setText("Not on GE / no price data");
-        } else if (shownPrice.instantBuy > 0) {
-            lblPrice.setText(String.format("GE buy: %,d gp", shownPrice.instantBuy));
-        } else {
-            lblPrice.setText(String.format("GE price: %,d gp", shownPrice.mid));
-        }
+        String geLine = TradeCopy.geLine(ironmanActive, config.showPrices(), shownPrice);
+        lblPrice.setText(geLine.isEmpty() ? " " : geLine);
+        lblPrice.setForeground(ironmanActive ? MUTED : GOLD);
 
         long geBuy = config.showPrices() && shownPrice != null ? shownPrice.buyPrice() : -1;
         long nature = config.showPrices() && shownNature != null ? shownNature.buyPrice() : -1;
         Alchemy.Result alchemy = Alchemy.compute(item.haPrice, geBuy, nature);
-        if (alchemy == null) {
+        String alchLine = TradeCopy.alchLine(ironmanActive, alchemy);
+        if (alchLine.isEmpty()) {
             lblHaAlch.setText(" ");
-        } else if (alchemy.profit == null) {
-            lblHaAlch.setText(String.format("High Alch: %,d gp", alchemy.haValue));
-            lblHaAlch.setForeground(NEUTRAL);
         } else {
-            String profit = alchemy.profit >= 0
-                ? String.format("+%,d gp", alchemy.profit)
-                : String.format("%,d gp", alchemy.profit);
-            lblHaAlch.setText(String.format("High Alch: %,d gp  (%s)", alchemy.haValue, profit));
-            lblHaAlch.setForeground(alchemy.profit >= 0 ? GOOD : BAD);
+            lblHaAlch.setText(alchLine);
+            if (!ironmanActive && alchemy != null && alchemy.profit != null) {
+                lblHaAlch.setForeground(alchemy.profit >= 0 ? GOOD : BAD);
+            } else {
+                lblHaAlch.setForeground(ironmanActive ? GOLD : NEUTRAL);
+            }
         }
 
         populateEquipment(details.stats);
@@ -940,84 +1007,207 @@ public class JEIPanel extends PluginPanel {
             return;
         }
         for (ShopEntry shop : visible) {
-            String stock = "";
-            if (shop.infiniteStock()) {
-                stock = " (\u221e)";
-            } else if (shop.stock > 0) {
-                stock = " (" + String.format("%,d", shop.stock) + ")";
-            }
-            String unit = shop.isCoins() ? "gp" : shop.currency;
-            String price = " \u2014 " + String.format("%,d %s", shop.price, unit);
-            String priceColor = "#bebebe";
-            if (shop.isCoins() && geBuy > 0 && shop.price > 0) {
-                priceColor = shop.price <= geBuy ? "#64d264" : "#dc6464";
-            }
-            String html = "<font color='#bebebe'>\u00b7 " + escape(shop.shopName) + escape(stock) + "</font>"
-                + "<font color='" + priceColor + "'>" + escape(price) + "</font>";
+            TradeCopy.ShopLine line = TradeCopy.shop(ironmanActive, shop, geBuy);
+            String html = "<font color='#bebebe'>\u00b7 " + escape(shop.shopName) + escape(line.stock) + "</font>"
+                + "<font color='" + line.priceColor + "'>" + escape(line.price) + "</font>";
             shopsContent.add(htmlLine(html, null, "small"));
         }
         shopsSection.setVisible(true);
     }
 
-    private void populateRecipes(List<RecipeInfo> recipes) {
+    private void populateRecipes(List<com.osr.jei.model.RecipeInfo> recipes) {
         recipeBody.removeAll();
         if (recipes == null || recipes.isEmpty()) {
             recipeSection.setVisible(false);
             return;
         }
-        JLabel header = plainLabel(recipes.size() == 1 ? "Crafting recipe" : "Crafting recipes", "bodyBold", Color.WHITE);
-        recipeBody.add(header);
-        recipeBody.add(Box.createRigidArea(new Dimension(0, 3)));
-        for (int i = 0; i < recipes.size(); i++) {
-            if (i > 0) {
-                recipeBody.add(Box.createRigidArea(new Dimension(0, 8)));
+        String rootName = shownItem == null ? "" : shownItem.name;
+        Integer rootId = shownItem == null ? null : shownItem.id;
+        ItemDetails root = shownDetails == null ? ItemDetails.EMPTY : shownDetails;
+        BuildExpander.Result tree = BuildExpander.expandSelected(rootName, rootId, root, viewPages(), expandedPaths);
+        RecipeTreeView.fill(recipeBody, style, tree, !expandedPaths.isEmpty(), treeActions());
+        recipeSection.setVisible(true);
+        if (!tree.pending.isEmpty()) {
+            scheduleTreeLoads(tree.pending);
+        }
+    }
+
+    private RecipeTreeView.Actions treeActions() {
+        return new RecipeTreeView.Actions() {
+            @Override
+            public void toggle(String path, String itemName) {
+                toggleTree(path, itemName);
             }
-            RecipeInfo recipe = recipes.get(i);
-            recipeBody.add(htmlLine(escape(recipeSummary(recipe)), "#96dc96", "small"));
-            if (!recipe.ingredients.isEmpty()) {
-                recipeBody.add(plainLabel("Ingredients", "bodyBold", ColorScheme.LIGHT_GRAY_COLOR));
-                for (RecipeIngredient ingredient : recipe.ingredients) {
-                    recipeBody.add(buildIngredientRow(ingredient));
+
+            @Override
+            public void openItem(String itemName) {
+                SearchItem target = findByName(itemName);
+                if (target != null) {
+                    navigateTo(target);
                 }
             }
-        }
-        recipeSection.setVisible(true);
+
+            @Override
+            public boolean canOpen(String itemName) {
+                return findByName(itemName) != null;
+            }
+
+            @Override
+            public void expandAll() {
+                expandFullTree();
+            }
+
+            @Override
+            public void collapseAll() {
+                expandedPaths.clear();
+                renderDetails();
+            }
+
+            @Override
+            public void icon(JLabel label, String itemName) {
+                SearchItem target = findByName(itemName);
+                if (target == null) {
+                    return;
+                }
+                AsyncBufferedImage img = itemManager.getImage(target.id);
+                if (img != null) {
+                    img.addTo(label);
+                }
+            }
+        };
     }
 
-    private static String recipeSummary(RecipeInfo recipe) {
-        StringBuilder info = new StringBuilder();
-        if (!recipe.skill.isEmpty()) {
-            info.append(recipe.skill);
-            if (recipe.level > 0) {
-                info.append(" (Lv. ").append(recipe.level).append(")");
-            }
+    private void toggleTree(String path, String itemName) {
+        if (expandedPaths.contains(path)) {
+            String prefix = path + BuildExpander.SEP;
+            expandedPaths.removeIf(existing -> existing.equals(path) || existing.startsWith(prefix));
+        } else {
+            expandedPaths.add(path);
+            treeFailed.remove(treeKey(itemName));
         }
-        if (!recipe.facility.isEmpty()) {
-            if (info.length() > 0) {
-                info.append("  \u00b7  ");
-            }
-            info.append(recipe.facility);
-        }
-        if (recipe.experience > 0) {
-            if (info.length() > 0) {
-                info.append("  \u00b7  ");
-            }
-            if (recipe.experience == Math.floor(recipe.experience)) {
-                info.append((int) recipe.experience);
-            } else {
-                info.append(recipe.experience);
-            }
-            info.append(" XP");
-        }
-        return info.toString();
+        renderDetails();
     }
 
-    private JPanel buildIngredientRow(RecipeIngredient ingredient) {
-        SearchItem found = findByName(ingredient.name);
-        String text = ingredient.quantity > 1
-            ? ingredient.name + " \u00d7 " + ingredient.quantity
-            : ingredient.name;
-        return linkedRow(found, text, null);
+    private void expandFullTree() {
+        if (shownItem == null || shownDetails == null || treeLoadInFlight) {
+            return;
+        }
+        int gen = detailGeneration.get();
+        String name = shownItem.name;
+        Integer id = shownItem.id;
+        ItemDetails root = shownDetails;
+        treeFailed.clear();
+        treeLoadInFlight = true;
+        Set<String> failed = new LinkedHashSet<>();
+        scheduler.execute(() -> {
+            BuildExpander.Result result = BuildExpander.expandAll(name, id, root, fetchingPages(failed));
+            SwingUtilities.invokeLater(() -> {
+                treeLoadInFlight = false;
+                if (gen != detailGeneration.get() || closed) {
+                    return;
+                }
+                treeFailed.addAll(failed);
+                expandedPaths.clear();
+                expandedPaths.addAll(result.expandedPaths);
+                renderDetails();
+            });
+        });
+    }
+
+    private void scheduleTreeLoads(List<String> names) {
+        if (treeLoadInFlight || names.isEmpty()) {
+            return;
+        }
+        int gen = detailGeneration.get();
+        List<String> pending = new ArrayList<>(names);
+        Set<String> failed = new LinkedHashSet<>();
+        treeLoadInFlight = true;
+        scheduler.execute(() -> {
+            for (String name : pending) {
+                if (gen != detailGeneration.get() || closed) {
+                    break;
+                }
+                if (itemDetailsService.peek(name) != null) {
+                    continue;
+                }
+                try {
+                    itemDetailsService.load(name).join();
+                } catch (Exception error) {
+                    failed.add(treeKey(name));
+                }
+            }
+            SwingUtilities.invokeLater(() -> {
+                treeLoadInFlight = false;
+                if (gen != detailGeneration.get() || closed || shownDetails == null) {
+                    return;
+                }
+                treeFailed.addAll(failed);
+                renderDetails();
+            });
+        });
+    }
+
+    private RecipePages viewPages() {
+        return new RecipePages() {
+            @Override
+            public ItemDetails cached(String itemName) {
+                if (treeFailed.contains(treeKey(itemName))) {
+                    return ItemDetails.EMPTY;
+                }
+                return itemDetailsService.peek(itemName);
+            }
+
+            @Override
+            public ItemDetails load(String itemName) {
+                return cached(itemName);
+            }
+
+            @Override
+            public Integer idFor(String itemName) {
+                SearchItem item = findByName(itemName);
+                return item == null ? null : item.id;
+            }
+        };
+    }
+
+    private RecipePages fetchingPages(Set<String> failed) {
+        return new RecipePages() {
+            @Override
+            public ItemDetails cached(String itemName) {
+                return itemDetailsService.peek(itemName);
+            }
+
+            @Override
+            public ItemDetails load(String itemName) {
+                ItemDetails have = cached(itemName);
+                if (have != null) {
+                    return have;
+                }
+                try {
+                    ItemDetails loaded = itemDetailsService.load(itemName).join();
+                    return loaded == null ? ItemDetails.EMPTY : loaded;
+                } catch (Exception error) {
+                    failed.add(treeKey(itemName));
+                    return ItemDetails.EMPTY;
+                }
+            }
+
+            @Override
+            public Integer idFor(String itemName) {
+                SearchItem item = findByName(itemName);
+                return item == null ? null : item.id;
+            }
+        };
+    }
+
+    private void updateIronmanBadge() {
+        if (lblIronman != null) {
+            lblIronman.setVisible(ironmanActive);
+        }
+    }
+
+    private static String treeKey(String name) {
+        return name == null ? "" : name.trim().toLowerCase(Locale.ROOT);
     }
 
     private void populateUsedIn(List<String> products) {
