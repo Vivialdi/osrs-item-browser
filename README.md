@@ -8,6 +8,7 @@ Search any Old School RuneScape item instantly and see everything about it in on
 ### Item Search
 - Search the full OSRS item catalogue by name (inventory items, equipment, quest items, and more)
 - Results appear as an icon grid as you type — click any item to load its detail panel
+- Filter by tradeable, members, equipable, and gear slot. The filters use the game cache already in the search index, so they do not call the wiki, and the choices are remembered
 
 ### Grand Exchange Price
 - Live GE price fetched from the RuneLite pricing API
@@ -34,11 +35,24 @@ Search any Old School RuneScape item instantly and see everything about it in on
 
 ### Drop Sources
 - Drop table for any item: monster name, combat level, drop quantity, and drop rate
-  
+- Rates are shown as `1/X` (fractions, `Always`, percentages, and ranges). Words such as `Rare` stay as written, and a quantity like `1-3` is not treated as the rate
+- Hover a row to see the wiki's original rate text
+- Sort the list by rate (most common first), combat level, or name. The choice is remembered. Rows with no combat level stay at the bottom of a level sort
+
 ### Equipment Stats
 - Attack and Defence bonuses for every combat style (Stab, Slash, Crush, Magic, Range)
 - Strength, Ranged Strength, Magic Damage %, and Prayer bonus
 - Slot type and weapon speed
+- **Compare with worn** shows the change versus what you have equipped: attack, defence, strength, ranged strength, magic damage, prayer, weight, and attack speed. Gains are green and losses are red. A lighter or faster result is green
+- A two-handed weapon is compared with your weapon and shield together. Equipping a shield or a one-handed weapon while you wear a two-handed weapon removes that weapon
+- Worn bonuses are loaded only after you open the comparison, once per worn item, from the same page parse used everywhere else
+- Turn the section off with **Compare equipment**
+
+### Requirements
+- Skill levels on a recipe, and wield requirements stated on the item page (an Attack level in the opening text, `{{SCP}}` in a requirements section, and a quest named by the infobox or by "completed the … quest")
+- Met requirements get a check, unmet ones a cross and grey text, on the recipe, its build-path rows, and the equipment requirements
+- Levels are your real levels, not boosted ones. A quest counts only when it is finished, and only when the wiki name matches a quest exactly. Anything we cannot match is shown with no check
+- Logged out, or with **Requirement checks** off, the requirements stay visible and are not marked met or unmet
 
 ### Shop Sources
 - Lists every in-game shop that sells the item

@@ -4,6 +4,8 @@ import com.osr.jei.crafting.BuildExpander;
 import com.osr.jei.model.RecipeInfo;
 import com.osr.jei.model.RecipeIngredient;
 import com.osr.jei.owned.OwnedText;
+import com.osr.jei.requirements.Mark;
+import com.osr.jei.requirements.RequirementJudge;
 import com.osr.jei.service.ItemDetails;
 import org.junit.Test;
 
@@ -86,6 +88,41 @@ public class RecipeTreeViewTest {
         });
         assertEquals(null, opened.get());
         assertEquals(null, toggled.get());
+    }
+
+    @Test
+    public void unmetRecipeIsGreyAndLoggedOutIsNotJudged() throws Exception {
+        RecipeInfo recipe = new RecipeInfo(
+            "Smithing", 99, "Anvil", 375,
+            Collections.singletonList(new RecipeIngredient("Rune bar", 5)),
+            1, "");
+        ItemDetails root = new ItemDetails(
+            Collections.singletonList(recipe),
+            java.util.Optional.empty(),
+            Double.NaN,
+            Collections.emptyList(),
+            Collections.emptyList(),
+            Collections.emptyList());
+        BuildExpander.Result tree = BuildExpander.expandSelected(
+            "Rune platebody", 1127, root, new NoPages(), Collections.emptySet());
+        UiStyle style = UiStyle.from(12, FontStyleChoice.REGULAR, FontFamilyChoice.SANS_SERIF);
+
+        SwingUtilities.invokeAndWait(() -> {
+            JPanel unmet = new JPanel();
+            unmet.setSize(180, 400);
+            RecipeTreeView.fill(unmet, style, tree, false, idleActions(), null, ignored -> Mark.UNMET);
+            String unmetText = collect(unmet);
+            assertTrue(unmetText.contains("&#10007;") || unmetText.contains("\u2717"));
+            assertTrue(unmetText.contains("Smithing"));
+            assertTrue(hasForeground(unmet, new java.awt.Color(130, 130, 130)));
+
+            JPanel open = new JPanel();
+            open.setSize(180, 400);
+            RecipeTreeView.fill(open, style, tree, false, idleActions(), null, recipeInfo -> Mark.NEUTRAL);
+            String neutral = collect(open);
+            assertFalse(neutral.contains(RequirementJudge.htmlPrefix(Mark.UNMET).trim()));
+            assertFalse(neutral.contains("&#10007;"));
+        });
     }
 
     @Test
@@ -182,6 +219,20 @@ public class RecipeTreeViewTest {
             public void icon(JLabel label, String itemName) {
             }
         };
+    }
+
+    private static boolean hasForeground(java.awt.Component component, java.awt.Color color) {
+        if (component instanceof JLabel && color.equals(component.getForeground()) && ((JLabel) component).getText().contains("Rune bar")) {
+            return true;
+        }
+        if (component instanceof java.awt.Container) {
+            for (java.awt.Component child : ((java.awt.Container) component).getComponents()) {
+                if (hasForeground(child, color)) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     private static String collect(java.awt.Component component) {

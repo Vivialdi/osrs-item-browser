@@ -16,9 +16,14 @@ public final class ItemSearch {
     }
 
     public static List<SearchItem> rank(List<SearchItem> items, String query, int limit) {
+        return rank(items, query, limit, SearchCriteria.ANY);
+    }
+
+    public static List<SearchItem> rank(List<SearchItem> items, String query, int limit, SearchCriteria criteria) {
         if (items == null || items.isEmpty() || query == null || limit <= 0) {
             return Collections.emptyList();
         }
+        SearchCriteria filter = criteria == null ? SearchCriteria.ANY : criteria;
         String lower = query.trim().toLowerCase(java.util.Locale.ROOT);
         if (lower.length() < 2) {
             return Collections.emptyList();
@@ -26,7 +31,7 @@ public final class ItemSearch {
         List<SearchItem> prefix = new ArrayList<>();
         List<SearchItem> rest = new ArrayList<>();
         for (SearchItem item : items) {
-            if (item == null || item.nameLower == null) {
+            if (item == null || item.nameLower == null || !filter.matches(item)) {
                 continue;
             }
             if (!item.nameLower.contains(lower)) {

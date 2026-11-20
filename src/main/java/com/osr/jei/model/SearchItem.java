@@ -16,12 +16,22 @@ public class SearchItem {
     public final boolean members;
     /** High-alch value in coins (0 = item cannot be alched or has no store price). */
     public final int     haPrice;
+    /**
+     * Members, tradeable, equipable, and gear slot packed by {@code ItemTraits}.
+     * Built from the item definition while the index is scanned.
+     */
+    public final int     traits;
 
     public SearchItem(int id, String name, boolean members, int haPrice) {
+        this(id, name, members, haPrice, members ? 1 : 0);
+    }
+
+    public SearchItem(int id, String name, boolean members, int haPrice, int traits) {
         this.id        = id;
         this.name      = name;
         this.nameLower = name == null ? "" : name.toLowerCase(java.util.Locale.ROOT);
         this.members   = members;
         this.haPrice   = haPrice;
+        this.traits    = traits;
     }
 }

@@ -1,6 +1,8 @@
 package com.osr.jei;
 
+import com.osr.jei.drops.DropSort;
 import com.osr.jei.ironman.IronmanMode;
+import com.osr.jei.search.SearchCriteria;
 import com.osr.jei.ui.FontFamilyChoice;
 import com.osr.jei.ui.FontStyleChoice;
 import net.runelite.client.config.Config;
@@ -104,5 +106,86 @@ public interface JEIConfig extends Config {
     )
     default boolean showOwned() {
         return true;
+    }
+
+    @ConfigItem(
+        keyName = "showRequirementChecks",
+        name = "Requirement checks",
+        description = "Mark skill and quest requirements you do not meet, and grey those rows out. While logged out the requirements are shown with no met or unmet mark.",
+        position = 9
+    )
+    default boolean showRequirementChecks() {
+        return true;
+    }
+
+    @ConfigItem(
+        keyName = "dropSort",
+        name = "Drop sort",
+        description = "Order drop sources by rate (most common first), combat level, or name. The same choice is in the drop list. Missing combat levels stay at the bottom.",
+        position = 10
+    )
+    default DropSort dropSort() {
+        return DropSort.RATE;
+    }
+
+    @ConfigItem(
+        keyName = "showEquipmentCompare",
+        name = "Compare equipment",
+        description = "Compare an equipable item with what you are wearing. Worn bonuses are loaded from the wiki only after you open the comparison, and only once per worn item.",
+        position = 11
+    )
+    default boolean showEquipmentCompare() {
+        return true;
+    }
+
+    @ConfigSection(
+        name = "Search filters",
+        description = "Limit search results using the item cache. The same choices are in the sidebar.",
+        position = 12
+    )
+    String filters = "filters";
+
+    @ConfigItem(
+        keyName = "filterTradeable",
+        name = "Tradeable",
+        description = "Limit search to tradeable or untradeable items",
+        section = "filters",
+        position = 13
+    )
+    default SearchCriteria.Trade filterTradeable() {
+        return SearchCriteria.Trade.ANY;
+    }
+
+    @ConfigItem(
+        keyName = "filterMembers",
+        name = "Members",
+        description = "Limit search to members or free-to-play items",
+        section = "filters",
+        position = 14
+    )
+    default SearchCriteria.Members filterMembers() {
+        return SearchCriteria.Members.ANY;
+    }
+
+    @ConfigItem(
+        keyName = "filterEquipable",
+        name = "Equipable",
+        description = "Limit search to items that can be equipped",
+        section = "filters",
+        position = 15
+    )
+    default SearchCriteria.Equip filterEquipable() {
+        return SearchCriteria.Equip.ANY;
+    }
+
+    @ConfigItem(
+        keyName = "filterSlot",
+        name = "Gear slot",
+        description = "Limit search to one equipment slot",
+        section = "filters",
+        position = 16
+    )
+    default SearchCriteria.SlotChoice filterSlot() {
+        return SearchCriteria.SlotChoice.ANY;
     }
 }

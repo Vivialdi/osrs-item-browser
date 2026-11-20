@@ -2,7 +2,10 @@ package com.osr.jei.ui;
 
 import com.osr.jei.crafting.BuildExpander;
 import com.osr.jei.crafting.RecipeText;
+import com.osr.jei.model.RecipeInfo;
 import com.osr.jei.owned.OwnedText;
+import com.osr.jei.requirements.Mark;
+import com.osr.jei.requirements.RequirementJudge;
 import net.runelite.client.ui.ColorScheme;
 
 import javax.swing.BorderFactory;
@@ -28,6 +31,7 @@ public final class RecipeTreeView {
     private static final Color LINK = new Color(100, 180, 255);
     private static final Color MUTED = new Color(150, 150, 150);
     private static final Color GOOD = new Color(150, 220, 150);
+    private static final Color UNMET = new Color(130, 130, 130);
 
     public interface Actions {
         void toggle(String path, String itemName);
@@ -57,6 +61,11 @@ public final class RecipeTreeView {
         Long have(String itemName);
     }
 
+    /** Requirement judgment for recipe rows. Null means show the requirement with no marker. */
+    public interface Marks {
+        Mark recipe(RecipeInfo recipe);
+    }
+
     private RecipeTreeView() {
     }
 
@@ -71,6 +80,18 @@ public final class RecipeTreeView {
         boolean anyOpen,
         Actions actions,
         Counts counts
+    ) {
+        fill(body, style, result, anyOpen, actions, counts, null);
+    }
+
+    public static void fill(
+        JPanel body,
+        UiStyle style,
+        BuildExpander.Result result,
+        boolean anyOpen,
+        Actions actions,
+        Counts counts,
+        Marks marks
     ) {
         body.removeAll();
         boolean ingredients = hasIngredients(result);
@@ -96,12 +117,13 @@ public final class RecipeTreeView {
                 body.add(Box.createRigidArea(new Dimension(0, 8)));
             }
             BuildExpander.RecipeBranch branch = result.recipes.get(i);
+            Mark mark = markOf(marks, branch.recipe);
             String summary = RecipeText.summary(branch.recipe);
             if (!summary.isEmpty()) {
-                body.add(html(style, escape(summary), "small", GOOD));
+                body.add(html(style, RequirementJudge.htmlPrefix(mark) + escape(summary), "small", mark == Mark.UNMET ? UNMET : GOOD));
             }
             for (BuildExpander.BuildNode ingredient : branch.ingredients) {
-                addNode(body, style, ingredient, actions, counts);
+                addNode(body, style, ingredient, actions, counts, marks, mark == Mark.UNMET);
             }
             if (!branch.baseMaterials.isEmpty()) {
                 body.add(Box.createRigidArea(new Dimension(0, 4)));
@@ -128,17 +150,35 @@ public final class RecipeTreeView {
         return false;
     }
 
-    private static void addNode(JPanel parent, UiStyle style, BuildExpander.BuildNode node, Actions actions, Counts counts) {
+    private static Mark markOf(Marks marks, RecipeInfo recipe) {
+        if (marks == null || recipe == null) {
+            return Mark.NEUTRAL;
+        }
+        Mark mark = marks.recipe(recipe);
+        return mark == null ? Mark.NEUTRAL : mark;
+    }
+
+    private static void addNode(
+        JPanel parent,
+        UiStyle style,
+        BuildExpander.BuildNode node,
+        Actions actions,
+        Counts counts,
+        Marks marks,
+        boolean parentUnmet
+    ) {
         JPanel block = column();
         int inset = Math.min(Math.max(0, node.depth - 1), 6) * 8;
         if (inset > 0) {
             block.setBorder(BorderFactory.createEmptyBorder(0, inset, 0, 0));
         }
-        block.add(row(style, node, actions, counts));
+        block.add(row(style, node, actions, counts, parentUnmet));
+        Mark childMark = Mark.NEUTRAL;
         if (node.expanded && node.recipe != null) {
+            childMark = markOf(marks, node.recipe);
             String summary = RecipeText.summary(node.recipe);
             if (!summary.isEmpty()) {
-                block.add(html(style, escape(summary), "small", GOOD));
+                block.add(html(style, RequirementJudge.htmlPrefix(childMark) + escape(summary), "small", childMark == Mark.UNMET ? UNMET : GOOD));
             }
         }
         if (node.loading) {
@@ -150,13 +190,14 @@ public final class RecipeTreeView {
                 : node.otherRecipes + " other methods on this page";
             block.add(label(style, extra, "small", MUTED));
         }
+        boolean unmetHere = parentUnmet || childMark == Mark.UNMET;
         for (BuildExpander.BuildNode child : node.children) {
-            addNode(block, style, child, actions, counts);
+            addNode(block, style, child, actions, counts, marks, unmetHere);
         }
         parent.add(block);
     }
 
-    private static JPanel row(UiStyle style, BuildExpander.BuildNode node, Actions actions, Counts counts) {
+    private static JPanel row(UiStyle style, BuildExpander.BuildNode node, Actions actions, Counts counts, boolean unmet) {
         JPanel row = new JPanel(new BorderLayout(4, 0)) {
             @Override
             public Dimension getMaximumSize() {
@@ -186,7 +227,8 @@ public final class RecipeTreeView {
             text = text + " (loop)";
         }
         String htmlText = escape(text) + ownedSuffix(counts, node.name, node.quantity, false);
-        WrappingLabel name = html(style, htmlText, "small", open ? LINK : ColorScheme.LIGHT_GRAY_COLOR);
+        Color nameColor = unmet ? UNMET : (open ? LINK : ColorScheme.LIGHT_GRAY_COLOR);
+        WrappingLabel name = html(style, htmlText, "small", nameColor);
         if (open) {
             String itemName = node.name;
             MouseAdapter opener = new MouseAdapter() {

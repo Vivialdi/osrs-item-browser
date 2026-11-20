@@ -31,7 +31,7 @@ public class EquipmentStats {
     public final int prayer;     // Prayer bonus
 
     // ── Meta ───────────────────────────────────────────────────────────────────
-    public final String slot;    // e.g. "Weapon", "2h sword", "Head", "Body" …
+    public final String slot;    // e.g. "weapon", "2h", "head", "body"
     public final int    speed;   // Attack speed in ticks (0 if not a weapon)
 
     public EquipmentStats(
@@ -56,5 +56,14 @@ public class EquipmentStats {
         this.prayer      = prayer;
         this.slot        = slot;
         this.speed       = speed;
+    }
+
+    /** Wiki slot {@code 2h} occupies both the weapon and shield slots. */
+    public boolean twoHanded() {
+        if (slot == null) {
+            return false;
+        }
+        String key = slot.trim().toLowerCase(java.util.Locale.ROOT);
+        return key.equals("2h") || key.startsWith("2h ") || key.contains("two-hand") || key.contains("two hand");
     }
 }
