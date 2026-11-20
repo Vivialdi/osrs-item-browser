@@ -16,6 +16,8 @@ Search any Old School RuneScape item instantly and see everything about it in on
 ### Crafting Recipes
 - See the skill, level requirement, facility (anvil, furnace, etc.), and XP reward for crafted items
 - Click any ingredient in the recipe to jump straight to that item's detail page
+- Expand an ingredient, or use **Expand tree**, for a build path. Sub-pages load only when opened (depth 4, 20 items) and looping recipes stop
+- A **Base materials** list totals the expanded branches
 - "Used to craft" button expands a full list of every item this ingredient is used in
 
 ### Drop Sources
@@ -38,8 +40,13 @@ Search any Old School RuneScape item instantly and see everything about it in on
 - The last 12 viewed items are shown as a quick-access icon row below the search bar
 
 ### Right-Click Lookup
-- Right-click any item in your **inventory** or on the **ground** and choose **JEI Lookup**
-- Jumps straight to that item's detail page in the sidebar — no typing needed
+- Right-click an item in your **inventory**, **bank** (including placeholders and the bank inventory), **worn equipment**, the **equipment stats** interface, or on the **ground** and choose **JEI Lookup**
+- Noted, placeholder, and worn items open the real item
+
+### Ironman mode
+- **Auto** (the default) follows the logged-in account. Ironman, Hardcore, Ultimate, and Group Ironman accounts see shops, drop sources, and the crafting tree before Grand Exchange info
+- **On** and **Off** override that, including at the login screen
+- High alch and store prices stay prominent. Grand Exchange prices are a reference, and they are still skipped entirely when **Show GE Prices** is off
 
 ## Usage
 
