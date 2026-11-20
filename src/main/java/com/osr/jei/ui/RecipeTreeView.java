@@ -2,6 +2,7 @@ package com.osr.jei.ui;
 
 import com.osr.jei.crafting.BuildExpander;
 import com.osr.jei.crafting.RecipeText;
+import com.osr.jei.owned.OwnedText;
 import net.runelite.client.ui.ColorScheme;
 
 import javax.swing.BorderFactory;
@@ -42,10 +43,35 @@ public final class RecipeTreeView {
         void icon(JLabel label, String itemName);
     }
 
+    /**
+     * Owned counts for the open item. {@link #have(String)} is null when the
+     * name is not in the catalogue, so the row must not claim zero.
+     */
+    public interface Counts {
+        boolean show();
+
+        boolean inventoryKnown();
+
+        boolean bankKnown();
+
+        Long have(String itemName);
+    }
+
     private RecipeTreeView() {
     }
 
     public static void fill(JPanel body, UiStyle style, BuildExpander.Result result, boolean anyOpen, Actions actions) {
+        fill(body, style, result, anyOpen, actions, null);
+    }
+
+    public static void fill(
+        JPanel body,
+        UiStyle style,
+        BuildExpander.Result result,
+        boolean anyOpen,
+        Actions actions,
+        Counts counts
+    ) {
         body.removeAll();
         boolean ingredients = hasIngredients(result);
         JLabel header = label(style, ingredients
@@ -75,13 +101,19 @@ public final class RecipeTreeView {
                 body.add(html(style, escape(summary), "small", GOOD));
             }
             for (BuildExpander.BuildNode ingredient : branch.ingredients) {
-                addNode(body, style, ingredient, actions);
+                addNode(body, style, ingredient, actions, counts);
             }
             if (!branch.baseMaterials.isEmpty()) {
                 body.add(Box.createRigidArea(new Dimension(0, 4)));
-                body.add(label(style, "Base materials", "bodyBold", ColorScheme.LIGHT_GRAY_COLOR));
+                String materials = "Base materials";
+                if (counts != null && counts.show() && counts.inventoryKnown() && !counts.bankKnown()) {
+                    materials = "Base materials \u00b7 bank not opened";
+                }
+                body.add(label(style, materials, "bodyBold", ColorScheme.LIGHT_GRAY_COLOR));
                 for (Map.Entry<String, Long> material : branch.baseMaterials.entrySet()) {
-                    body.add(html(style, "\u00b7 " + escape(quantityText(material.getKey(), material.getValue())), "small", MUTED));
+                    String line = "\u00b7 " + escape(quantityText(material.getKey(), material.getValue()));
+                    line = line + ownedSuffix(counts, material.getKey(), material.getValue(), true);
+                    body.add(html(style, line, "small", MUTED));
                 }
             }
         }
@@ -96,13 +128,13 @@ public final class RecipeTreeView {
         return false;
     }
 
-    private static void addNode(JPanel parent, UiStyle style, BuildExpander.BuildNode node, Actions actions) {
+    private static void addNode(JPanel parent, UiStyle style, BuildExpander.BuildNode node, Actions actions, Counts counts) {
         JPanel block = column();
         int inset = Math.min(Math.max(0, node.depth - 1), 6) * 8;
         if (inset > 0) {
             block.setBorder(BorderFactory.createEmptyBorder(0, inset, 0, 0));
         }
-        block.add(row(style, node, actions));
+        block.add(row(style, node, actions, counts));
         if (node.expanded && node.recipe != null) {
             String summary = RecipeText.summary(node.recipe);
             if (!summary.isEmpty()) {
@@ -119,12 +151,12 @@ public final class RecipeTreeView {
             block.add(label(style, extra, "small", MUTED));
         }
         for (BuildExpander.BuildNode child : node.children) {
-            addNode(block, style, child, actions);
+            addNode(block, style, child, actions, counts);
         }
         parent.add(block);
     }
 
-    private static JPanel row(UiStyle style, BuildExpander.BuildNode node, Actions actions) {
+    private static JPanel row(UiStyle style, BuildExpander.BuildNode node, Actions actions, Counts counts) {
         JPanel row = new JPanel(new BorderLayout(4, 0)) {
             @Override
             public Dimension getMaximumSize() {
@@ -153,7 +185,8 @@ public final class RecipeTreeView {
         if (node.cycle) {
             text = text + " (loop)";
         }
-        WrappingLabel name = html(style, escape(text), "small", open ? LINK : ColorScheme.LIGHT_GRAY_COLOR);
+        String htmlText = escape(text) + ownedSuffix(counts, node.name, node.quantity, false);
+        WrappingLabel name = html(style, htmlText, "small", open ? LINK : ColorScheme.LIGHT_GRAY_COLOR);
         if (open) {
             String itemName = node.name;
             MouseAdapter opener = new MouseAdapter() {
@@ -174,6 +207,20 @@ public final class RecipeTreeView {
         center.add(name, BorderLayout.CENTER);
         row.add(center, BorderLayout.CENTER);
         return row;
+    }
+
+    private static String ownedSuffix(Counts counts, String itemName, long need, boolean baseMaterial) {
+        if (counts == null || !counts.show() || !counts.inventoryKnown()) {
+            return "";
+        }
+        Long have = counts.have(itemName);
+        if (have == null) {
+            return "";
+        }
+        String fragment = baseMaterial
+            ? OwnedText.stillNeededHtml(have, need, counts.bankKnown())
+            : OwnedText.haveNeedHtml(have, need, counts.bankKnown());
+        return " \u00b7 " + fragment;
     }
 
     static String quantityText(String name, long quantity) {

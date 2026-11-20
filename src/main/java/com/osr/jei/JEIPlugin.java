@@ -4,16 +4,21 @@ import com.google.inject.Provides;
 import com.osr.jei.ironman.IronmanAccounts;
 import com.osr.jei.lookup.CanonicalIds;
 import com.osr.jei.lookup.LookupTargets;
+import com.osr.jei.owned.OwnedItems;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
 import net.runelite.api.GameState;
+import net.runelite.api.Item;
 import net.runelite.api.ItemComposition;
+import net.runelite.api.ItemContainer;
 import net.runelite.api.MenuAction;
 import net.runelite.api.MenuEntry;
 import net.runelite.api.events.AccountHashChanged;
 import net.runelite.api.events.GameStateChanged;
+import net.runelite.api.events.ItemContainerChanged;
 import net.runelite.api.events.MenuEntryAdded;
 import net.runelite.api.events.VarbitChanged;
+import net.runelite.api.gameval.InventoryID;
 import net.runelite.api.gameval.VarbitID;
 import net.runelite.api.widgets.Widget;
 import net.runelite.api.widgets.WidgetUtil;
@@ -35,7 +40,9 @@ import java.awt.Graphics2D;
 import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Sidebar item browser. Right-click an inventory, bank, worn, or ground item and choose JEI Lookup.
@@ -58,6 +65,7 @@ public class JEIPlugin extends Plugin {
     private NavigationButton navButton;
     private boolean ironmanActive;
     private boolean ironmanKnown;
+    private volatile OwnedItems.Snapshot owned = OwnedItems.Snapshot.NONE;
 
     @Override
     protected void startUp() {
@@ -81,6 +89,8 @@ public class JEIPlugin extends Plugin {
                     }
                     panel.ensureItemIndex(client.getGameState());
                     publishIronman();
+                    owned = OwnedItems.Snapshot.NONE;
+                    publishOwned();
                 });
             } catch (Exception e) {
                 log.error("OSRS Item Browser failed to start", e);
@@ -98,6 +108,24 @@ public class JEIPlugin extends Plugin {
         if (state == GameState.LOGIN_SCREEN || state == GameState.LOGGING_IN || state == GameState.LOGGED_IN) {
             publishIronman();
         }
+        publishOwned();
+    }
+
+    /**
+     * Inventory, worn equipment, and bank. Read on the client thread and
+     * forwarded only when the canonical totals actually change. The bank
+     * container is null until it has been opened this session.
+     */
+    @Subscribe
+    public void onItemContainerChanged(ItemContainerChanged event) {
+        if (panel.isClosed()) {
+            return;
+        }
+        int containerId = event.getContainerId();
+        if (containerId != InventoryID.INV && containerId != InventoryID.BANK && containerId != InventoryID.WORN) {
+            return;
+        }
+        publishOwned();
     }
 
     /**
@@ -109,6 +137,7 @@ public class JEIPlugin extends Plugin {
     public void onAccountHashChanged(AccountHashChanged event) {
         if (!panel.isClosed()) {
             publishIronman();
+            publishOwned();
         }
     }
 
@@ -123,6 +152,7 @@ public class JEIPlugin extends Plugin {
     @Override
     protected void shutDown() {
         panel.shutdown();
+        owned = OwnedItems.Snapshot.NONE;
         SwingUtilities.invokeLater(() -> {
             if (navButton != null) {
                 clientToolbar.removeNavigation(navButton);
@@ -170,6 +200,74 @@ public class JEIPlugin extends Plugin {
                 panel.onIronmanChanged(active);
             }
         });
+    }
+
+    /**
+     * Rebuilds the owned snapshot from the live containers. No-ops off the
+     * client thread by rescheduling, and skips the Swing update when the
+     * canonical map is unchanged.
+     */
+    private void publishOwned() {
+        if (!client.isClientThread()) {
+            clientThread.invokeLater(this::publishOwned);
+            return;
+        }
+        if (panel.isClosed()) {
+            return;
+        }
+        OwnedItems.Snapshot next = captureOwned();
+        if (next.equals(owned)) {
+            return;
+        }
+        owned = next;
+        SwingUtilities.invokeLater(() -> {
+            if (!panel.isClosed()) {
+                panel.onOwnedChanged(next);
+            }
+        });
+    }
+
+    private OwnedItems.Snapshot captureOwned() {
+        try {
+            ItemContainer inventory = client.getItemContainer(InventoryID.INV);
+            ItemContainer worn = client.getItemContainer(InventoryID.WORN);
+            ItemContainer bank = client.getItemContainer(InventoryID.BANK);
+            return OwnedItems.snapshot(
+                readContainer(inventory),
+                readContainer(worn),
+                readContainer(bank),
+                inventory != null,
+                bank != null
+            );
+        } catch (RuntimeException ex) {
+            log.debug("Could not read item containers: {}", ex.getMessage());
+            return OwnedItems.Snapshot.NONE;
+        }
+    }
+
+    private Map<Integer, Long> readContainer(ItemContainer container) {
+        if (container == null) {
+            return Collections.emptyMap();
+        }
+        Item[] items = container.getItems();
+        if (items == null) {
+            return Collections.emptyMap();
+        }
+        List<OwnedItems.Slot> slots = new ArrayList<>();
+        for (int i = 0; i < items.length; i++) {
+            Item item = items[i];
+            if (item == null || item.getId() < 0 || item.getQuantity() <= 0) {
+                continue;
+            }
+            try {
+                ItemComposition composition = itemManager.getItemComposition(item.getId());
+                int canonical = itemManager.canonicalize(item.getId());
+                slots.add(new OwnedItems.Slot(canonical, item.getQuantity(), composition.getPlaceholderTemplateId()));
+            } catch (RuntimeException ignored) {
+                // one unreadable slot does not discard the rest of the container
+            }
+        }
+        return OwnedItems.count(slots);
     }
 
     /**
