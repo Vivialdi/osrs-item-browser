@@ -4,10 +4,7 @@ import com.osr.jei.wiki.MapPins;
 import com.osr.jei.wiki.TtlCache;
 import com.osr.jei.wiki.WikiPages;
 import net.runelite.api.Client;
-import net.runelite.api.MenuAction;
 import net.runelite.api.coords.WorldPoint;
-import net.runelite.api.gameval.InterfaceID;
-import net.runelite.api.widgets.Widget;
 import net.runelite.client.callback.ClientThread;
 import net.runelite.client.ui.overlay.worldmap.WorldMapPoint;
 import net.runelite.client.ui.overlay.worldmap.WorldMapPointManager;
@@ -29,8 +26,6 @@ import java.util.function.Consumer;
 @Singleton
 public class MapMarkers {
 
-    private static final int JUMP_TICKS = 6;
-
     private final Client client;
     private final ClientThread clientThread;
     private final WorldMapPointManager points;
@@ -39,7 +34,6 @@ public class MapMarkers {
     private final List<WorldMapPoint> active = new ArrayList<>();
     private final BufferedImage icon = pinIcon();
     private WorldPoint pending;
-    private int jumpTicks;
 
     @Inject
     public MapMarkers(Client client, ClientThread clientThread, WorldMapPointManager points, WikiPages pages) {
@@ -59,8 +53,7 @@ public class MapMarkers {
 
     /**
      * Loads coordinates for one page title, then shows them. {@code status} runs
-     * on the EDT with "opened", "pinned", "none", or "failed". "pinned" means
-     * the pins are placed but the world-map orb was not on screen to open.
+     * on the EDT with "pinned", "none", or "failed". Pins never open the map.
      */
     public void show(String title, Consumer<String> status) {
         if (title == null || title.trim().isEmpty() || pages == null) {
@@ -94,19 +87,16 @@ public class MapMarkers {
         });
     }
 
-    /** Called from the client thread once per game tick while a jump is pending. */
+    /**
+     * Called from the client thread once per game tick. When the world map
+     * renderer is loaded, centres it on the pending pin. Does not open the map.
+     */
     public void nudge() {
-        if (pending == null || client == null || client.getWorldMap() == null) {
+        if (pending == null || !mapLoaded()) {
             return;
         }
         client.getWorldMap().setWorldMapPositionTarget(pending);
-        boolean loaded = client.getWorldMap().getWorldMapRenderer() != null
-            && client.getWorldMap().getWorldMapRenderer().isLoaded();
-        jumpTicks--;
-        if (loaded || jumpTicks <= 0) {
-            pending = null;
-            jumpTicks = 0;
-        }
+        pending = null;
     }
 
     private void place(String title, List<MapPins.Pin> parsed, Consumer<String> status) {
@@ -116,14 +106,14 @@ public class MapMarkers {
         }
         List<MapPins.Pin> copy = new ArrayList<>(parsed);
         clientThread.invokeLater(() -> {
-            boolean opened = placeOnClient(title, copy);
-            report(status, opened ? "opened" : "pinned");
+            placeOnClient(title, copy);
+            report(status, "pinned");
         });
     }
 
-    private boolean placeOnClient(String title, List<MapPins.Pin> parsed) {
+    private void placeOnClient(String title, List<MapPins.Pin> parsed) {
         if (points == null || parsed.isEmpty()) {
-            return false;
+            return;
         }
         WorldPoint first = null;
         for (MapPins.Pin pin : parsed) {
@@ -141,45 +131,29 @@ public class MapMarkers {
             points.add(marker);
             active.add(marker);
         }
-        if (first == null) {
-            return false;
+        if (first != null) {
+            aim(first);
         }
-        pending = first;
-        jumpTicks = JUMP_TICKS;
-        return openAndJump(first);
     }
 
-    /**
-     * Opens the world map by invoking the minimap orb, then centres on the pin.
-     * {@code InterfaceID.Orbs.WORLDMAP} is the orb graphic and does not take the
-     * click; the button is {@code ORB_WORLDMAP}. This is the same public
-     * {@code menuAction} the client uses for that orb. No reflection.
-     *
-     * @return false when the map is not open and the orb is not on screen, so
-     *     the caller can tell the player to open the map (the pending point is
-     *     still applied the next time the map is open)
-     */
-    private boolean openAndJump(WorldPoint world) {
-        if (client == null || client.getWorldMap() == null) {
-            return false;
+    /** Centres now if the map is already loaded. Otherwise waits for the next open. */
+    private void aim(WorldPoint world) {
+        pending = world;
+        if (mapLoaded()) {
+            client.getWorldMap().setWorldMapPositionTarget(pending);
+            pending = null;
         }
-        client.getWorldMap().setWorldMapPositionTarget(world);
-        Widget map = client.getWidget(InterfaceID.Worldmap.MAP_CONTAINER);
-        if (map != null && !map.isHidden()) {
-            return true;
-        }
-        Widget button = client.getWidget(InterfaceID.Orbs.ORB_WORLDMAP);
-        if (button == null || button.isHidden()) {
-            return false;
-        }
-        client.menuAction(button.getIndex(), button.getId(), MenuAction.CC_OP, 1, -1, "World Map", "");
-        client.getWorldMap().setWorldMapPositionTarget(world);
-        return true;
+    }
+
+    private boolean mapLoaded() {
+        return client != null
+            && client.getWorldMap() != null
+            && client.getWorldMap().getWorldMapRenderer() != null
+            && client.getWorldMap().getWorldMapRenderer().isLoaded();
     }
 
     private void clearOnClient() {
         pending = null;
-        jumpTicks = 0;
         if (points == null) {
             active.clear();
             return;

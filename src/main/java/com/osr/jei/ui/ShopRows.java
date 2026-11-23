@@ -24,7 +24,6 @@ public final class ShopRows {
     /** Gold, not the shop-name blue, so the control reads as an action. */
     public static final Color MAP_ACTION = new Color(196, 163, 90);
     public static final String MAP_LINK = "\u2316 Show on map";
-    public static final String MAP_OPENING = "\u2316 Opening map\u2026";
     public static final String MAP_PINNED = "\u2316 Pinned. Open the world map to view.";
 
     private ShopRows() {
@@ -109,7 +108,7 @@ public final class ShopRows {
         map.setHtml(MAP_LINK);
         map.setBorder(BorderFactory.createEmptyBorder(0, 16, 2, 0));
         map.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
-        map.setToolTipText("Pin this place and open the world map");
+        map.setToolTipText("Pin this place. Open the world map to view it.");
         return map;
     }
 

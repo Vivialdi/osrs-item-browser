@@ -2517,12 +2517,9 @@ public class JEIPanel extends PluginPanel {
 
     private void showOnMap(String page, WrappingLabel label) {
         if (label != null) {
-            label.setHtml(ShopRows.MAP_OPENING);
+            label.setHtml(ShopRows.MAP_PINNED);
         }
         if (mapMarkers == null || page == null || page.isEmpty()) {
-            if (label != null) {
-                label.setHtml(ShopRows.MAP_PINNED);
-            }
             return;
         }
         mapMarkers.show(page, status -> applyMapStatus(label, status));
@@ -2532,9 +2529,7 @@ public class JEIPanel extends PluginPanel {
         if (label == null || status == null) {
             return;
         }
-        if ("opened".equals(status)) {
-            label.setHtml(ShopRows.MAP_OPENING);
-        } else if ("none".equals(status)) {
+        if ("none".equals(status)) {
             label.setHtml("\u2316 No map pin on the wiki");
         } else if ("failed".equals(status)) {
             label.setHtml("\u2316 Could not load the map pin");
