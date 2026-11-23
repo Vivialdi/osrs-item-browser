@@ -38,7 +38,7 @@ public class MonsterService {
         if (cached != null) {
             return CompletableFuture.completedFuture(cached);
         }
-        return pages.load(monsterName).handle((page, error) -> {
+        return pages.loadWikitext(monsterName).handle((page, error) -> {
             if (error != null) {
                 Throwable cause = error.getCause() == null ? error : error.getCause();
                 if (cause instanceof RequestCancelledException) {

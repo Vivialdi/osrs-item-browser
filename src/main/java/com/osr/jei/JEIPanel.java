@@ -2467,7 +2467,7 @@ public class JEIPanel extends PluginPanel {
             if (view == null || !view.started) {
                 ensureMonster(monsterName);
             }
-            return plainLabel("Loading location data\u2026", "small", MUTED);
+            return plainLabel("Loading\u2026", "small", MUTED);
         }
         if (view.error != null) {
             JPanel box = verticalBox();

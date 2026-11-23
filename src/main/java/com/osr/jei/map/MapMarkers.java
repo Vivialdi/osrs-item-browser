@@ -83,7 +83,7 @@ public class MapMarkers {
             finish(title, cached, null, status, id);
             return;
         }
-        pages.load(title).whenComplete((page, error) -> {
+        pages.loadWikitext(title).whenComplete((page, error) -> {
             List<MapPins.Pin> parsed = error == null && page != null && !page.missing
                 ? MapPins.parse(page.wikitext)
                 : java.util.Collections.emptyList();
