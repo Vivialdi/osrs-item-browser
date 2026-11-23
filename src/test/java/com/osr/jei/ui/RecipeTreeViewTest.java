@@ -84,7 +84,8 @@ public class RecipeTreeViewTest {
             assertEquals(16, body.getComponent(0).getFont().getSize());
             String text = collect(body);
             assertTrue(text.contains("Crafting / Build path"));
-            assertTrue(text.contains("Expand tree"));
+            assertFalse(text.contains("Expand tree"));
+            assertFalse(text.contains("Collapse tree"));
             assertTrue(text.contains("Rune bar"));
             assertTrue(text.contains("Smithing"));
             assertFalse(text.contains("have "));
@@ -166,12 +167,13 @@ public class RecipeTreeViewTest {
             RecipeTreeView.fill(unknown, style, tree, true, idleActions(), bankClosed);
             String unknownText = collect(unknown);
             assertTrue(unknownText.contains("have 2 (bank not checked) / need 5"));
-            assertTrue(unknownText.contains("still needed 3 (bank not checked)"));
+            assertTrue(unknownText.contains("Base materials (bank not checked)"));
+            assertFalse(unknownText.contains("still needed 3 (bank not checked)"));
             assertFalse(unknownText.contains("0+"));
             assertFalse(unknownText.contains("2+"));
             assertFalse(unknownText.contains("3+"));
             assertTrue(tooltipContains(unknown, OwnedText.BANK_UNKNOWN_TIP));
-            assertTrue(unknownText.contains(OwnedText.UNKNOWN_COLOR));
+            assertTrue(labelForeground(unknown, "bank not checked", new java.awt.Color(0xC8, 0xC8, 0xC8)));
         });
     }
 
@@ -393,6 +395,23 @@ public class RecipeTreeViewTest {
         if (component instanceof java.awt.Container) {
             for (java.awt.Component child : ((java.awt.Container) component).getComponents()) {
                 if (hasForeground(child, color)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private static boolean labelForeground(Component component, String snippet, java.awt.Color color) {
+        if (component instanceof JLabel) {
+            String text = ((JLabel) component).getText();
+            if (text != null && text.contains(snippet) && color.equals(component.getForeground())) {
+                return true;
+            }
+        }
+        if (component instanceof java.awt.Container) {
+            for (Component child : ((java.awt.Container) component).getComponents()) {
+                if (labelForeground(child, snippet, color)) {
                     return true;
                 }
             }

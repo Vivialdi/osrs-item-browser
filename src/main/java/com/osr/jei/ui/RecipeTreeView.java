@@ -114,19 +114,8 @@ public final class RecipeTreeView {
                 : (result.recipes.size() == 1 ? "Crafting recipe" : "Crafting recipes"), "bodyBold", Color.WHITE);
             body.add(header);
         }
-        if (ingredients) {
-            JButton expand = button(style, "Expand tree", "button");
-            expand.setForeground(LINK);
-            expand.addActionListener(e -> actions.expandAll());
-            body.add(expand);
-            if (anyOpen) {
-                JButton collapse = button(style, "Collapse tree", "button");
-                collapse.setForeground(LINK);
-                collapse.addActionListener(e -> actions.collapseAll());
-                body.add(collapse);
-            }
-        }
         body.add(Box.createRigidArea(new Dimension(0, 3)));
+        BuildExpander.RecipeBranch summaryBranch = summaryBranch(result);
         for (int i = 0; i < result.recipes.size(); i++) {
             if (i > 0) {
                 body.add(Box.createRigidArea(new Dimension(0, 8)));
@@ -140,19 +129,58 @@ public final class RecipeTreeView {
             for (BuildExpander.BuildNode ingredient : branch.ingredients) {
                 addNode(body, style, ingredient, actions, counts, marks, mark == Mark.UNMET);
             }
-            if (!branch.baseMaterials.isEmpty()) {
-                body.add(Box.createRigidArea(new Dimension(0, 4)));
-                String materials = "Base materials";
-                if (counts != null && counts.show() && counts.inventoryKnown() && !counts.bankKnown()) {
-                    materials = "Base materials \u00b7 bank not checked";
-                }
-                body.add(label(style, materials, "bodyBold", ColorScheme.LIGHT_GRAY_COLOR));
-                for (Map.Entry<String, Long> material : branch.baseMaterials.entrySet()) {
-                    String line = "\u00b7 " + escape(quantityText(material.getKey(), material.getValue()));
-                    line = line + ownedSuffix(counts, material.getKey(), material.getValue(), true);
-                    body.add(html(style, line, "small", MUTED));
-                }
+        }
+        addBaseMaterials(body, style, summaryBranch, counts);
+    }
+
+    /** One summary: the expanded recipe if there is one, otherwise the first. */
+    private static BuildExpander.RecipeBranch summaryBranch(BuildExpander.Result result) {
+        BuildExpander.RecipeBranch first = null;
+        if (result == null || result.recipes == null) {
+            return null;
+        }
+        for (BuildExpander.RecipeBranch branch : result.recipes) {
+            if (first == null) {
+                first = branch;
             }
+            if (branchExpanded(branch)) {
+                return branch;
+            }
+        }
+        return first;
+    }
+
+    private static boolean branchExpanded(BuildExpander.RecipeBranch branch) {
+        if (branch == null || branch.ingredients == null) {
+            return false;
+        }
+        for (BuildExpander.BuildNode ingredient : branch.ingredients) {
+            if (ingredient.expanded || ingredient.loading || !ingredient.children.isEmpty()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static void addBaseMaterials(
+        JPanel body,
+        UiStyle style,
+        BuildExpander.RecipeBranch branch,
+        Counts counts
+    ) {
+        if (branch == null || branch.baseMaterials == null || branch.baseMaterials.isEmpty()) {
+            return;
+        }
+        body.add(Box.createRigidArea(new Dimension(0, 6)));
+        boolean bankUnknown = counts != null && counts.show() && counts.inventoryKnown() && !counts.bankKnown();
+        String materials = bankUnknown ? "Base materials (bank not checked)" : "Base materials";
+        body.add(label(style, materials, "bodyBold", ColorScheme.LIGHT_GRAY_COLOR));
+        for (Map.Entry<String, Long> material : branch.baseMaterials.entrySet()) {
+            String line = "\u00b7 " + escape(quantityText(material.getKey(), material.getValue()));
+            if (!bankUnknown) {
+                line = line + ownedSuffix(counts, material.getKey(), material.getValue(), true);
+            }
+            body.add(html(style, line, "small", MUTED));
         }
     }
 

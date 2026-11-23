@@ -21,7 +21,7 @@ public final class RecipeText {
         }
         if (recipe.skill2 != null && !recipe.skill2.isEmpty()) {
             if (info.length() > 0) {
-                info.append("  \u00b7  ");
+                info.append(" \u00b7 ");
             }
             info.append(recipe.skill2);
             if (recipe.level2 > 0) {
@@ -30,13 +30,13 @@ public final class RecipeText {
         }
         if (recipe.facility != null && !recipe.facility.isEmpty()) {
             if (info.length() > 0) {
-                info.append("  \u00b7  ");
+                info.append(" \u00b7 ");
             }
             info.append(recipe.facility);
         }
         if (recipe.experience > 0) {
             if (info.length() > 0) {
-                info.append("  \u00b7  ");
+                info.append(" \u00b7 ");
             }
             if (recipe.experience == Math.floor(recipe.experience)) {
                 info.append((int) recipe.experience);
@@ -47,7 +47,7 @@ public final class RecipeText {
         }
         if (recipe.outputQuantity > 1) {
             if (info.length() > 0) {
-                info.append("  \u00b7  ");
+                info.append(" \u00b7 ");
             }
             info.append("Makes ").append(recipe.outputQuantity);
         }

@@ -27,6 +27,13 @@ public final class WidthLimit {
             return FALLBACK;
         }
         int fromViewport = fromViewport(component);
+        int laidOut = narrowestLaidOut(component);
+        if (fromViewport > 20 && laidOut > 20) {
+            return Math.min(fromViewport, laidOut);
+        }
+        if (laidOut > 20) {
+            return laidOut;
+        }
         if (fromViewport > 20) {
             return fromViewport;
         }
@@ -37,6 +44,31 @@ public final class WidthLimit {
             return inner;
         }
         return FALLBACK;
+    }
+
+    /** Smallest already-sized ancestor, so a line cannot prefer a width past the row. */
+    private static int narrowestLaidOut(Component component) {
+        int best = -1;
+        int chrome = 0;
+        Component child = component;
+        Container parent = component.getParent();
+        if (component instanceof Container) {
+            chrome += horizontalInsets((Container) component);
+        }
+        int guard = 0;
+        while (parent != null && guard++ < 24) {
+            if (parent.getWidth() > 20) {
+                int inner = parent.getWidth() - horizontalInsets(parent) - chrome - siblingBreadth(parent, child);
+                if (inner > 20) {
+                    best = best < 0 ? inner : Math.min(best, inner);
+                }
+            }
+            chrome += horizontalInsets(parent);
+            chrome += siblingBreadth(parent, child);
+            child = parent;
+            parent = parent.getParent();
+        }
+        return best;
     }
 
     private static int fromViewport(Component component) {

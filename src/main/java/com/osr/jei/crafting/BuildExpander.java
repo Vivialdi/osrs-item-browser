@@ -277,7 +277,7 @@ public final class BuildExpander {
      * has not been fetched. An unknown crafted item still does.
      */
     private static boolean showExpander(String name, ItemDetails cached) {
-        if (RawMaterials.isBase(name)) {
+        if (BaseMaterials.isBase(name, cached)) {
             return false;
         }
         if (cached == null) {
