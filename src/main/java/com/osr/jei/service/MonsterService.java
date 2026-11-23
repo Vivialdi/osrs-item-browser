@@ -46,7 +46,7 @@ public class MonsterService {
                 if (cause instanceof RequestCancelledException) {
                     throw new CompletionException(cause);
                 }
-                log.debug("[JEI] Monster info failed for '{}': {}", monsterName, cause.getMessage());
+                log.debug("[Item Browser] Monster info failed for '{}': {}", monsterName, cause.getMessage());
                 throw new CompletionException(cause);
             }
             long parseStarted = System.nanoTime();

@@ -192,7 +192,7 @@ public class WikiPages {
 
     private static PageContent toPage(String title, JsonObject root) {
         if (root == null || !root.has("parse")) {
-            log.debug("[JEI] Wiki page missing: {}", title);
+            log.debug("[Item Browser] Wiki page missing: {}", title);
             return PageContent.MISSING;
         }
         JsonObject parse = root.getAsJsonObject("parse");
@@ -204,7 +204,7 @@ public class WikiPages {
         if (parse.has("text") && parse.get("text").isJsonObject()) {
             html = parse.getAsJsonObject("text").get("*").getAsString();
         }
-        log.debug("[JEI] Wiki page fetched: {}", title);
+        log.debug("[Item Browser] Wiki page fetched: {}", title);
         return new PageContent(wikitext, html, false);
     }
 

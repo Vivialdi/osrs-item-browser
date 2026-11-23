@@ -54,9 +54,10 @@ public class CanonicalAndMenuTest {
     }
 
     @Test
-    public void anExistingJeiEntryIsNotAddedAgain() {
+    public void anExistingLookupEntryIsNotAddedAgain() {
         assertFalse(LookupTargets.alreadyOffered(Collections.emptyList()));
         assertFalse(LookupTargets.alreadyOffered(Arrays.asList("Withdraw-1", "Examine")));
-        assertTrue(LookupTargets.alreadyOffered(Arrays.asList("Examine", "<col=ff9040>JEI</col> Lookup")));
+        assertTrue(LookupTargets.alreadyOffered(Arrays.asList("Examine", LookupTargets.MENU_OPTION)));
+        assertFalse(LookupTargets.alreadyOffered(Collections.singletonList("Item Browser")));
     }
 }

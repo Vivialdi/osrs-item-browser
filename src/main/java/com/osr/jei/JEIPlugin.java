@@ -39,8 +39,8 @@ import net.runelite.client.ui.NavigationButton;
 
 import javax.inject.Inject;
 import javax.swing.SwingUtilities;
+import java.awt.BasicStroke;
 import java.awt.Color;
-import java.awt.Font;
 import java.awt.Graphics2D;
 import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
@@ -51,13 +51,13 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Sidebar item browser. Right-click an inventory, bank, worn, or ground item and choose JEI Lookup.
+ * Sidebar item browser. Right-click an inventory, bank, worn, or ground item and choose Item Browser Lookup.
  */
 @Slf4j
 @PluginDescriptor(
     name = "OSRS Item Browser",
     description = "Browse items, drop tables, shop prices, and sources",
-    tags = {"item", "drops", "wiki", "browser", "search", "jei"}
+    tags = {"item", "drops", "wiki", "browser", "search", "recipe"}
 )
 public class JEIPlugin extends Plugin {
 
@@ -418,7 +418,7 @@ public class JEIPlugin extends Plugin {
     }
 
     /**
-     * Adds one JEI Lookup entry on ground items and on Examine for inventory,
+     * Adds one Item Browser Lookup entry on ground items and on Examine for inventory,
      * bank (including placeholders and the bank side inventory), worn equipment,
      * and the equipment stats interface.
      */
@@ -436,7 +436,7 @@ public class JEIPlugin extends Plugin {
         }
         final int lookupId = itemId;
         client.getMenu().createMenuEntry(-1)
-            .setOption("<col=ff9040>JEI</col> Lookup")
+            .setOption(LookupTargets.MENU_OPTION)
             .setTarget(event.getTarget())
             .setType(MenuAction.RUNELITE)
             .setDeprioritized(true)
@@ -531,13 +531,13 @@ public class JEIPlugin extends Plugin {
         BufferedImage img = new BufferedImage(16, 16, BufferedImage.TYPE_INT_ARGB);
         Graphics2D g = img.createGraphics();
         g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        g.setStroke(new BasicStroke(1.5f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
         g.setColor(new Color(200, 160, 50));
-        g.fillRoundRect(0, 0, 15, 15, 4, 4);
+        g.drawOval(1, 1, 9, 9);
+        g.setColor(new Color(230, 200, 90));
+        g.fillOval(3, 3, 5, 5);
         g.setColor(new Color(80, 60, 10));
-        g.drawRoundRect(0, 0, 15, 15, 4, 4);
-        g.setColor(Color.BLACK);
-        g.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 7));
-        g.drawString("JEI", 2, 11);
+        g.drawLine(9, 9, 14, 14);
         g.dispose();
         return img;
     }

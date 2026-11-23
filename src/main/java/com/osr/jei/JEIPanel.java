@@ -567,7 +567,7 @@ public class JEIPanel extends PluginPanel {
                     item = idIndex.get(itemId);
                 }
                 if (item == null) {
-                    log.debug("[JEI] Item id {} is not in the index yet", canonical);
+                    log.debug("[Item Browser] Item id {} is not in the index yet", canonical);
                     return;
                 }
                 navStack.clear();
@@ -958,13 +958,13 @@ public class JEIPanel extends PluginPanel {
         if (finished) {
             if (items.isEmpty()) {
                 indexScanning = false;
-                log.info("[JEI] Item index was empty; waiting for the game cache");
+                log.info("[Item Browser] Item index was empty; waiting for the game cache");
                 showIndexStatus("Waiting for the game cache\u2026");
                 return;
             }
             indexPopulated = true;
             indexScanning = false;
-            log.info("[JEI] Item index ready — {} unique items", items.size());
+            log.info("[Item Browser] Item index ready: {} unique items", items.size());
         }
         // One pending UI flush. Intermediate chunks must not queue a history
         // rebuild per 500 ids, or a monster location update waits behind them.
@@ -1256,7 +1256,7 @@ public class JEIPanel extends PluginPanel {
                 if (unwrap(error) instanceof RequestCancelledException) {
                     return;
                 }
-                log.debug("[JEI] Failed to load '{}': {}", item.name, unwrap(error).getMessage());
+                log.debug("[Item Browser] Failed to load '{}': {}", item.name, unwrap(error).getMessage());
                 detailProblem = WikiFailures.page(unwrap(error));
                 shownDetails = null;
             } else {
