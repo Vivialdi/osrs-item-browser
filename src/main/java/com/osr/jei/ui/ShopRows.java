@@ -81,16 +81,16 @@ public final class ShopRows {
         JPanel text = new JPanel(new BorderLayout(0, 0));
         text.setOpaque(false);
         text.add(title, BorderLayout.CENTER);
-        WrappingLabel map = mapLink(style);
         if (showMap != null) {
+            WrappingLabel map = mapLink(style);
             map.addMouseListener(new MouseAdapter() {
                 @Override
                 public void mouseClicked(MouseEvent e) {
                     showMap.accept(map);
                 }
             });
+            text.add(map, BorderLayout.SOUTH);
         }
-        text.add(map, BorderLayout.SOUTH);
 
         row.add(text, BorderLayout.CENTER);
         row.add(price, BorderLayout.EAST);

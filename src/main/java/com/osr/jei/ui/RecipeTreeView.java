@@ -144,7 +144,7 @@ public final class RecipeTreeView {
                 body.add(Box.createRigidArea(new Dimension(0, 4)));
                 String materials = "Base materials";
                 if (counts != null && counts.show() && counts.inventoryKnown() && !counts.bankKnown()) {
-                    materials = "Base materials \u00b7 bank not opened";
+                    materials = "Base materials \u00b7 bank not checked";
                 }
                 body.add(label(style, materials, "bodyBold", ColorScheme.LIGHT_GRAY_COLOR));
                 for (Map.Entry<String, Long> material : branch.baseMaterials.entrySet()) {
@@ -228,8 +228,13 @@ public final class RecipeTreeView {
         };
         row.setBackground(ColorScheme.DARKER_GRAY_COLOR);
         row.setAlignmentX(0f);
-        boolean showToggle = !node.cycle && !node.capped && !(node.expanded && !node.loading && node.children.isEmpty() && node.recipe == null);
-        if (showToggle) {
+        JPanel toggleSlot = new JPanel(new BorderLayout());
+        toggleSlot.setOpaque(false);
+        toggleSlot.setPreferredSize(new Dimension(18, 18));
+        toggleSlot.setMinimumSize(new Dimension(18, 18));
+        toggleSlot.setMaximumSize(new Dimension(18, 18));
+        toggleSlot.putClientProperty("jei.role", "tree-toggle");
+        if (node.showExpander) {
             JButton toggle = button(style, node.expanded ? "\u25be" : "\u25b8", "small");
             toggle.setForeground(LINK);
             toggle.setMargin(new java.awt.Insets(0, 0, 0, 0));
@@ -238,11 +243,9 @@ public final class RecipeTreeView {
             toggle.addActionListener(e -> actions.toggle(path, itemName));
             toggle.setPreferredSize(new Dimension(18, 18));
             toggle.setMaximumSize(new Dimension(18, 18));
-            JPanel toggleWrap = new JPanel(new BorderLayout());
-            toggleWrap.setOpaque(false);
-            toggleWrap.add(toggle, BorderLayout.NORTH);
-            row.add(toggleWrap, BorderLayout.WEST);
+            toggleSlot.add(toggle, BorderLayout.NORTH);
         }
+        row.add(toggleSlot, BorderLayout.WEST);
         JLabel icon = new JLabel() {
             @Override
             public Dimension getPreferredSize() {
@@ -299,12 +302,16 @@ public final class RecipeTreeView {
         lines.setOpaque(false);
         lines.setAlignmentX(0f);
         WrappingLabel name = html(style, escape(text), "small", nameColor);
-        name.setToolTipText(suffix.isEmpty() ? text : text + " \u00b7 " + suffix);
+        String tip = suffix.isEmpty() ? text : text + " \u00b7 " + suffix;
+        if (counts != null && counts.show() && counts.inventoryKnown() && !counts.bankKnown()) {
+            tip = tip + " \u00b7 " + OwnedText.BANK_UNKNOWN_TIP;
+        }
+        name.setToolTipText(tip);
         lines.add(name);
         WrappingLabel have = null;
         if (!suffix.isEmpty()) {
             have = html(style, escape(suffix), "small", suffixColor);
-            have.setToolTipText(name.getToolTipText());
+            have.setToolTipText(tip);
             lines.add(have);
         }
         if (open) {

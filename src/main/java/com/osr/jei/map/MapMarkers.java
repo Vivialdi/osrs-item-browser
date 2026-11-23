@@ -33,6 +33,7 @@ public class MapMarkers {
     private final TtlCache<String, List<MapPins.Pin>> pins = new TtlCache<>(32, WikiPages.TTL_MS);
     private final List<WorldMapPoint> active = new ArrayList<>();
     private final BufferedImage icon = pinIcon();
+    private final java.util.concurrent.atomic.AtomicInteger requestId = new java.util.concurrent.atomic.AtomicInteger();
     private WorldPoint pending;
 
     @Inject
@@ -45,6 +46,7 @@ public class MapMarkers {
 
     /** Drops every pin this plugin added. Safe from the EDT or the client thread. */
     public void clear() {
+        requestId.incrementAndGet();
         if (clientThread == null) {
             return;
         }
@@ -52,22 +54,33 @@ public class MapMarkers {
     }
 
     /**
-     * Loads coordinates for one page title, then shows them. {@code status} runs
-     * on the EDT with "pinned", "none", or "failed". Pins never open the map.
+     * True after a cached read found no coordinates, so the row can omit the
+     * link instead of offering it again. Unknown pages return false.
+     */
+    public boolean knownWithoutPins(String title) {
+        if (title == null || title.trim().isEmpty()) {
+            return false;
+        }
+        String key = title.trim().toLowerCase(java.util.Locale.ROOT);
+        List<MapPins.Pin> cached = pins.get(key, System.currentTimeMillis());
+        return cached != null && cached.isEmpty();
+    }
+
+    /**
+     * Loads coordinates for one page title and replaces the previous pins.
+     * {@code status} runs on the EDT with "pinned", "none", or "failed".
+     * Pins never open the map.
      */
     public void show(String title, Consumer<String> status) {
         if (title == null || title.trim().isEmpty() || pages == null) {
             report(status, "none");
             return;
         }
+        final int id = requestId.incrementAndGet();
         String key = title.trim().toLowerCase(java.util.Locale.ROOT);
         List<MapPins.Pin> cached = pins.get(key, System.currentTimeMillis());
         if (cached != null) {
-            if (cached.isEmpty()) {
-                report(status, "none");
-            } else {
-                place(title, cached, status);
-            }
+            finish(title, cached, null, status, id);
             return;
         }
         pages.load(title).whenComplete((page, error) -> {
@@ -77,14 +90,30 @@ public class MapMarkers {
             if (error == null && page != null) {
                 pins.put(key, parsed, System.currentTimeMillis());
             }
-            if (error != null) {
-                report(status, "failed");
-            } else if (parsed.isEmpty()) {
-                report(status, "none");
-            } else {
-                place(title, parsed, status);
-            }
+            finish(title, parsed, error, status, id);
         });
+    }
+
+    private void finish(String title, List<MapPins.Pin> parsed, Throwable error, Consumer<String> status, int id) {
+        boolean current = id == requestId.get();
+        if (error != null) {
+            if (current) {
+                dropPins(id);
+            }
+            report(status, "failed");
+            return;
+        }
+        if (parsed == null || parsed.isEmpty()) {
+            if (current) {
+                dropPins(id);
+            }
+            report(status, "none");
+            return;
+        }
+        if (!current) {
+            return;
+        }
+        place(title, parsed, status, id);
     }
 
     /**
@@ -99,13 +128,28 @@ public class MapMarkers {
         pending = null;
     }
 
-    private void place(String title, List<MapPins.Pin> parsed, Consumer<String> status) {
+    private void dropPins(int id) {
+        if (clientThread == null) {
+            return;
+        }
+        clientThread.invokeLater(() -> {
+            if (id == requestId.get()) {
+                clearOnClient();
+            }
+        });
+    }
+
+    private void place(String title, List<MapPins.Pin> parsed, Consumer<String> status, int id) {
         if (clientThread == null) {
             report(status, "pinned");
             return;
         }
         List<MapPins.Pin> copy = new ArrayList<>(parsed);
         clientThread.invokeLater(() -> {
+            if (id != requestId.get()) {
+                return;
+            }
+            clearOnClient();
             placeOnClient(title, copy);
             report(status, "pinned");
         });

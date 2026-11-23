@@ -163,7 +163,7 @@ public class DetailPaneLayoutTest {
             try {
                 Render tree = treePane(PluginPanel.PANEL_WIDTH);
                 assertNoOverflow(tree);
-                JLabel have = findText(tree.detail, "have 0+ / need 1");
+                JLabel have = findText(tree.detail, "bank not checked / need 1");
                 JLabel name = findText(tree.detail, "Daeyalt essence");
                 assertTrue(have != null && name != null);
                 assertTrue(have != name);

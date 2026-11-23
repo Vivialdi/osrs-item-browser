@@ -31,10 +31,10 @@ Use a normal account first, then an ironman account for the ironman steps. Have 
 ## Owned counts
 
 9. Before opening the bank this session, look up an item you are holding.
-   - Expected: `Owned: N (bank not opened)`. The tooltip says the bank is not included. A recipe row can show `have N+ / need M`.
+   - Expected: `Owned: bank not checked` when you hold none, or `Owned: N (bank not checked)` when you hold some in the inventory or worn gear. It never says `Owned: 0` or uses a trailing `+`. A recipe row says `bank not checked / need M`, or `have N (bank not checked) / need M`, in grey. The tooltip says the bank is not included.
    - Screenshot: README slot 7 (`docs/bank-not-opened.png`).
 10. Open the bank, close it, and look at the same item.
-    - Expected: the "(bank not opened)" text is gone and the count includes the bank. No wiki request was added by opening the bank.
+    - Expected: the "bank not checked" text is gone and the count includes the bank, with red or green only then. No wiki request was added by opening the bank.
 11. Turn **Owned counts** off and on in the config.
     - Expected: the header and the recipe `have / need` text appear and disappear immediately.
 
@@ -98,7 +98,7 @@ Use a normal account first, then an ironman account for the ironman steps. Have 
 30. Search for an item the wiki does not have a page for, if you have one in the index.
     - Expected: "The OSRS Wiki has no page for this item." Retry is available and does not repeat on its own.
 31. With no search, then search for `rune`, then drag the sidebar narrower and wider. Open Air rune and expand **Shop sources** and the crafting tree.
-   - Expected: with no search, the results area does not leave a blank block; Favourites (when you have some) and Recent stay. The search box is the full width of the row. Each filter is its own row, label plus a combo you can read (`Any trade`, not `A...`). Right-click an icon to favourite it. Icon rows fill the width. Shop names wrap, the price is its own column, and **Show on map** is the smaller gold pin action under the name (not another blue shop line). It drops a world-map pin after one wiki read, then the link says to open the world map. The map is centred on the pin when you open it. The plugin does not open the map for you. Ingredient rows show the whole item icon beside the wrapping name and have/need line, including indented nodes. Nothing is cut off. The divider share is still **Detail pane share** after you reopen the config.
+   - Expected: with no search, the results area does not leave a blank block; Favourites (when you have some) and Recent stay. The search box is the full width of the row. Each filter is its own row, label plus a combo you can read (`Any trade`, not `A...`). Right-click an icon to favourite it. Icon rows fill the width. Shop names wrap, the price is its own column, and **Show on map** is the smaller gold pin action under the name (not another blue shop line). Only the latest shop or monster you pin says to open the world map; the others return to **Show on map**. The map shows that one place (every coordinate it has) and is centred there when you open it. The plugin does not open the map for you. A monster whose page has no coordinates does not offer the link. Ingredient rows show the whole item icon beside the wrapping name and have/need line, including indented nodes. Nothing is cut off. The divider share is still **Detail pane share** after you reopen the config.
 32. Change font size, style, and family while an item is open, then narrow the sidebar again.
    - Expected: the sidebar text updates immediately, including collapsed headers and an open drop list, and the lines reflow to the new font and width.
 33. Open Air rune, or any item with a long shop list, and do not click the section headers.

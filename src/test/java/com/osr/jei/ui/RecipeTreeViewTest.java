@@ -9,10 +9,14 @@ import com.osr.jei.requirements.RequirementJudge;
 import com.osr.jei.service.ItemDetails;
 import org.junit.Test;
 
+import javax.swing.JButton;
+import javax.swing.JComponent;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.SwingUtilities;
+import java.awt.Component;
 import java.awt.Font;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.Set;
@@ -154,18 +158,179 @@ public class RecipeTreeViewTest {
             assertTrue(knownText.contains("have 2 / need 5"));
             assertTrue(knownText.contains(OwnedText.SHORT_COLOR));
             assertTrue(knownText.contains("still needed 3"));
-            assertFalse(knownText.contains("still needed 3+"));
-            assertFalse(knownText.contains("bank not opened"));
+            assertFalse(knownText.contains("+"));
+            assertFalse(knownText.contains("bank not checked"));
 
             JPanel unknown = new JPanel();
             unknown.setSize(180, 400);
             RecipeTreeView.fill(unknown, style, tree, true, idleActions(), bankClosed);
             String unknownText = collect(unknown);
-            assertTrue(unknownText.contains("have 2+ / need 5"));
-            assertTrue(unknownText.contains("still needed 3+"));
-            assertTrue(unknownText.contains("bank not opened"));
+            assertTrue(unknownText.contains("have 2 (bank not checked) / need 5"));
+            assertTrue(unknownText.contains("still needed 3 (bank not checked)"));
+            assertFalse(unknownText.contains("0+"));
+            assertFalse(unknownText.contains("2+"));
+            assertFalse(unknownText.contains("3+"));
+            assertTrue(tooltipContains(unknown, OwnedText.BANK_UNKNOWN_TIP));
             assertTrue(unknownText.contains(OwnedText.UNKNOWN_COLOR));
         });
+    }
+
+    @Test
+    public void leavesKeepTheArrowSlotButDoNotShowIt() throws Exception {
+        RecipeInfo nested = new RecipeInfo(
+            "Runecraft", 1, "Altar", 1,
+            Collections.singletonList(new RecipeIngredient("Rune essence", 1)),
+            1, "");
+        ItemDetails craftable = new ItemDetails(
+            Collections.singletonList(nested),
+            java.util.Optional.empty(),
+            Double.NaN,
+            Collections.emptyList(),
+            Collections.emptyList(),
+            Collections.emptyList());
+        RecipeInfo rootRecipe = new RecipeInfo(
+            "Runecraft", 9, "Earth Altar", 6.5,
+            Arrays.asList(
+                new RecipeIngredient("Rune essence", 100),
+                new RecipeIngredient("Pure essence", 100),
+                new RecipeIngredient("Earth talisman", 1)
+            ),
+            1, "");
+        ItemDetails root = new ItemDetails(
+            Collections.singletonList(rootRecipe),
+            java.util.Optional.empty(),
+            Double.NaN,
+            Collections.emptyList(),
+            Collections.emptyList(),
+            Collections.emptyList());
+        com.osr.jei.crafting.RecipePages pages = new com.osr.jei.crafting.RecipePages() {
+            @Override
+            public ItemDetails cached(String itemName) {
+                if ("Rune essence".equals(itemName)) {
+                    return ItemDetails.EMPTY;
+                }
+                if ("Earth talisman".equals(itemName)) {
+                    return craftable;
+                }
+                return null;
+            }
+
+            @Override
+            public ItemDetails load(String itemName) {
+                throw new AssertionError("collapsed rows must not fetch");
+            }
+        };
+        BuildExpander.Result tree = BuildExpander.expandSelected("Earth rune", 557, root, pages, Collections.emptySet());
+        BuildExpander.BuildNode essence = tree.recipes.get(0).ingredients.get(0);
+        BuildExpander.BuildNode pure = tree.recipes.get(0).ingredients.get(1);
+        BuildExpander.BuildNode talisman = tree.recipes.get(0).ingredients.get(2);
+        assertFalse(essence.showExpander);
+        assertTrue(pure.showExpander);
+        assertTrue(talisman.showExpander);
+
+        Set<String> opened = new LinkedHashSet<>();
+        opened.add(essence.path);
+        BuildExpander.Result after = BuildExpander.expandSelected("Earth rune", 557, root, pages, opened);
+        assertFalse(after.recipes.get(0).ingredients.get(0).showExpander);
+        assertTrue(after.recipes.get(0).ingredients.get(0).children.isEmpty());
+
+        UiStyle style = UiStyle.from(12, FontStyleChoice.REGULAR, FontFamilyChoice.SANS_SERIF);
+        SwingUtilities.invokeAndWait(() -> {
+            JPanel body = new JPanel();
+            body.setSize(220, 400);
+            RecipeTreeView.fill(body, style, tree, false, idleActions(), null, null, false);
+            body.doLayout();
+            layout(body);
+            JLabel essenceIcon = iconInRow(body, "Rune essence");
+            JLabel pureIcon = iconInRow(body, "Pure essence");
+            assertTrue(essenceIcon != null && pureIcon != null);
+            java.awt.Point essenceAt = SwingUtilities.convertPoint(
+                essenceIcon.getParent(), essenceIcon.getX(), essenceIcon.getY(), body);
+            java.awt.Point pureAt = SwingUtilities.convertPoint(
+                pureIcon.getParent(), pureIcon.getX(), pureIcon.getY(), body);
+            assertEquals(pureAt.x, essenceAt.x);
+            assertFalse(rowHasArrow(body, "Rune essence"));
+            assertTrue(rowHasArrow(body, "Pure essence"));
+            assertTrue(rowHasArrow(body, "Earth talisman"));
+        });
+    }
+
+    private static void layout(Component component) {
+        if (component instanceof java.awt.Container) {
+            java.awt.Container container = (java.awt.Container) component;
+            container.doLayout();
+            for (Component child : container.getComponents()) {
+                layout(child);
+            }
+        }
+    }
+
+    private static JLabel iconInRow(Component component, String name) {
+        JLabel label = textLabel(component, name);
+        if (label == null) {
+            return null;
+        }
+        Component row = label;
+        while (row != null && !(row instanceof JComponent && "tree-toggle".equals(((JComponent) row).getClientProperty("jei.role")))) {
+            if (row.getParent() == null) {
+                break;
+            }
+            for (Component sibling : row.getParent().getComponents()) {
+                if (sibling instanceof JComponent && "tree-icon".equals(((JComponent) sibling).getClientProperty("jei.role"))) {
+                    return (JLabel) sibling;
+                }
+            }
+            row = row.getParent();
+        }
+        return null;
+    }
+
+    private static boolean rowHasArrow(Component component, String name) {
+        JLabel label = textLabel(component, name);
+        Component cursor = label;
+        while (cursor != null && cursor.getParent() != null) {
+            for (Component sibling : cursor.getParent().getComponents()) {
+                if (sibling instanceof JComponent
+                    && "tree-toggle".equals(((JComponent) sibling).getClientProperty("jei.role"))) {
+                    return containsArrow(sibling);
+                }
+            }
+            cursor = cursor.getParent();
+        }
+        return false;
+    }
+
+    private static boolean containsArrow(Component component) {
+        if (component instanceof JButton) {
+            String text = ((JButton) component).getText();
+            return text != null && (text.contains("\u25b8") || text.contains("\u25be"));
+        }
+        if (component instanceof java.awt.Container) {
+            for (Component child : ((java.awt.Container) component).getComponents()) {
+                if (containsArrow(child)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private static JLabel textLabel(Component component, String snippet) {
+        if (component instanceof JLabel) {
+            String text = ((JLabel) component).getText();
+            if (text != null && text.contains(snippet) && !text.contains("need")) {
+                return (JLabel) component;
+            }
+        }
+        if (component instanceof java.awt.Container) {
+            for (Component child : ((java.awt.Container) component).getComponents()) {
+                JLabel found = textLabel(child, snippet);
+                if (found != null) {
+                    return found;
+                }
+            }
+        }
+        return null;
     }
 
     private static RecipeTreeView.Counts counts(long have, boolean bankKnown) {
@@ -228,6 +393,23 @@ public class RecipeTreeViewTest {
         if (component instanceof java.awt.Container) {
             for (java.awt.Component child : ((java.awt.Container) component).getComponents()) {
                 if (hasForeground(child, color)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private static boolean tooltipContains(Component component, String snippet) {
+        if (component instanceof JComponent) {
+            String tip = ((JComponent) component).getToolTipText();
+            if (tip != null && tip.contains(snippet)) {
+                return true;
+            }
+        }
+        if (component instanceof java.awt.Container) {
+            for (Component child : ((java.awt.Container) component).getComponents()) {
+                if (tooltipContains(child, snippet)) {
                     return true;
                 }
             }

@@ -6,6 +6,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * World coordinates already present on a wiki page. Shop and monster pages
@@ -13,7 +15,16 @@ import java.util.Set;
  */
 public final class MapPins {
 
-    public static final int MAX = 8;
+    /**
+     * One clicked place can list many tiles, as monster {@code {{LocLine}}}
+     * rows do. The cap is per place, not a running total across clicks.
+     */
+    public static final int MAX = 32;
+
+    private static final Pattern LOC_COORD = Pattern.compile(
+        "x\\s*:\\s*(\\d+)\\s*,\\s*y\\s*:\\s*(\\d+)",
+        Pattern.CASE_INSENSITIVE
+    );
 
     public static final class Pin {
         public final int x;
@@ -43,10 +54,34 @@ public final class MapPins {
             String block = WikiText.extractTemplateBlock(wikitext, index);
             add(pins, seen, fromTemplate(block));
         }
+        addLocLines(wikitext, pins, seen);
         if (pins.isEmpty()) {
             add(pins, seen, fromInfobox(wikitext));
         }
         return pins;
+    }
+
+    /**
+     * Monster pages put every spawn in {@code {{LocLine}}} as {@code x:3109,y:9558},
+     * often several pairs in one line, with {@code plane=} for the floor.
+     * The item page does not copy those pairs, but the monster page already
+     * loaded for the location list does.
+     */
+    private static void addLocLines(String wikitext, List<Pin> pins, Set<String> seen) {
+        for (int index : WikiText.findTemplates(wikitext, "locline")) {
+            if (pins.size() >= MAX) {
+                return;
+            }
+            String block = WikiText.extractTemplateBlock(wikitext, index);
+            if (block == null) {
+                continue;
+            }
+            String plane = WikiText.coalesce(WikiText.parseParams(block), "plane", "z");
+            Matcher matcher = LOC_COORD.matcher(block);
+            while (matcher.find() && pins.size() < MAX) {
+                add(pins, seen, pin(matcher.group(1), matcher.group(2), plane));
+            }
+        }
     }
 
     private static Pin fromTemplate(String block) {

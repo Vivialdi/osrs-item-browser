@@ -236,6 +236,7 @@ public class JEIPanel extends PluginPanel {
     /** True while a section header is opening, so that refresh does not start a wiki fetch. */
     private boolean fillingSection;
     private final Set<String> openMonsters = new LinkedHashSet<>();
+    private WrappingLabel pinnedMapLabel;
     private final Map<String, LocationView> locationViews = new HashMap<>();
 
     private String selectedItemName = "";
@@ -398,6 +399,7 @@ public class JEIPanel extends PluginPanel {
         if (wikiHttp != null) {
             wikiHttp.shutdown();
         }
+        pinnedMapLabel = null;
         if (mapMarkers != null) {
             mapMarkers.clear();
         }
@@ -1163,6 +1165,7 @@ public class JEIPanel extends PluginPanel {
         }
         int gen = detailGeneration.incrementAndGet();
         monsterGeneration.incrementAndGet();
+        pinnedMapLabel = null;
         if (mapMarkers != null) {
             mapMarkers.clear();
         }
@@ -2052,9 +2055,10 @@ public class JEIPanel extends PluginPanel {
         for (ShopEntry shop : visible) {
             TradeCopy.ShopLine line = TradeCopy.shop(ironmanActive, shop, geBuy);
             String shopName = shop.shopName;
+            boolean unmapped = mapMarkers != null && mapMarkers.knownWithoutPins(shopName);
             shopsContent.add(ShopRows.row(style, shop, line,
                 () -> openWiki(shopName),
-                label -> showOnMap(shopName, label)));
+                unmapped ? null : label -> showOnMap(shopName, label)));
             shopsContent.add(Box.createRigidArea(new Dimension(0, 4)));
         }
     }
@@ -2503,26 +2507,45 @@ public class JEIPanel extends PluginPanel {
         wiki.setForeground(LINK);
         wiki.addActionListener(e -> openWiki(monsterName));
         box.add(wiki);
-        WrappingLabel map = ShopRows.mapLink(style);
-        String monster = monsterName;
-        map.addMouseListener(new java.awt.event.MouseAdapter() {
-            @Override
-            public void mouseClicked(java.awt.event.MouseEvent e) {
-                showOnMap(monster, map);
-            }
-        });
-        box.add(map);
+        if (info != null && info.mapped) {
+            WrappingLabel map = ShopRows.mapLink(style);
+            String monster = monsterName;
+            map.addMouseListener(new java.awt.event.MouseAdapter() {
+                @Override
+                public void mouseClicked(java.awt.event.MouseEvent e) {
+                    showOnMap(monster, map);
+                }
+            });
+            box.add(map);
+        }
         return box;
     }
 
     private void showOnMap(String page, WrappingLabel label) {
+        if (pinnedMapLabel != null && pinnedMapLabel != label && showsPinned(pinnedMapLabel)) {
+            pinnedMapLabel.setHtml(ShopRows.MAP_LINK);
+        }
+        pinnedMapLabel = label;
         if (label != null) {
             label.setHtml(ShopRows.MAP_PINNED);
         }
         if (mapMarkers == null || page == null || page.isEmpty()) {
             return;
         }
-        mapMarkers.show(page, status -> applyMapStatus(label, status));
+        mapMarkers.show(page, status -> {
+            if ("pinned".equals(status) && pinnedMapLabel != label) {
+                return;
+            }
+            applyMapStatus(label, status);
+            if (label == pinnedMapLabel && !"pinned".equals(status)) {
+                pinnedMapLabel = null;
+            }
+        });
+    }
+
+    private static boolean showsPinned(WrappingLabel label) {
+        String text = label.getText();
+        return text != null && text.contains("Pinned. Open the world map");
     }
 
     private static void applyMapStatus(WrappingLabel label, String status) {

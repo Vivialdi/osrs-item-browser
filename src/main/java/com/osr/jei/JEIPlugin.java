@@ -68,6 +68,10 @@ public class JEIPlugin extends Plugin {
     @Inject private JEIConfig config;
     @Inject private JEIPanel panel;
     @Inject private PlayerProgress progress;
+    @Inject private ConfigManager configManager;
+
+    /** Set only after InventoryID.BANK has changed, or a saved per-account flag and a loaded container. */
+    private boolean bankSeen;
 
     private NavigationButton navButton;
     private boolean ironmanActive;
@@ -149,7 +153,8 @@ public class JEIPlugin extends Plugin {
     /**
      * Inventory, worn equipment, and bank. Read on the client thread and
      * forwarded only when the canonical totals actually change. The bank
-     * container is null until it has been opened this session.
+     * counts only after that container has changed, not merely because an
+     * empty container object exists.
      */
     @Subscribe
     public void onItemContainerChanged(ItemContainerChanged event) {
@@ -159,6 +164,9 @@ public class JEIPlugin extends Plugin {
         int containerId = event.getContainerId();
         if (containerId != InventoryID.INV && containerId != InventoryID.BANK && containerId != InventoryID.WORN) {
             return;
+        }
+        if (containerId == InventoryID.BANK) {
+            rememberBank();
         }
         publishOwned();
         if (containerId == InventoryID.WORN) {
@@ -173,6 +181,7 @@ public class JEIPlugin extends Plugin {
      */
     @Subscribe
     public void onAccountHashChanged(AccountHashChanged event) {
+        bankSeen = false;
         if (!panel.isClosed()) {
             publishIronman();
             publishOwned();
@@ -283,12 +292,47 @@ public class JEIPlugin extends Plugin {
                 readContainer(worn),
                 readContainer(bank),
                 inventory != null,
-                bank != null
+                bankHasBeenSeen()
             );
         } catch (RuntimeException ex) {
             log.debug("Could not read item containers: {}", ex.getMessage());
             return OwnedItems.Snapshot.NONE;
         }
+    }
+
+    private void rememberBank() {
+        bankSeen = true;
+        if (configManager == null) {
+            return;
+        }
+        try {
+            configManager.setRSProfileConfiguration("osrjei", "bankSeen", Boolean.TRUE);
+        } catch (RuntimeException ex) {
+            log.debug("Could not remember that the bank was opened: {}", ex.getMessage());
+        }
+    }
+
+    /**
+     * A non-null bank container is not enough: the client can hold an empty
+     * one before the player opens the bank. The flag is per account.
+     */
+    private boolean bankHasBeenSeen() {
+        if (bankSeen) {
+            return true;
+        }
+        if (configManager == null || client.getItemContainer(InventoryID.BANK) == null) {
+            return false;
+        }
+        try {
+            Boolean saved = configManager.getRSProfileConfiguration("osrjei", "bankSeen", Boolean.class);
+            if (Boolean.TRUE.equals(saved)) {
+                bankSeen = true;
+                return true;
+            }
+        } catch (RuntimeException ex) {
+            log.debug("Could not read the saved bank flag: {}", ex.getMessage());
+        }
+        return false;
     }
 
     private Map<Integer, Long> readContainer(ItemContainer container) {
