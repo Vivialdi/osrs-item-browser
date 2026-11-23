@@ -3,6 +3,7 @@ package com.osr.jei.ui;
 import com.osr.jei.ironman.TradeCopy;
 import com.osr.jei.model.ShopEntry;
 
+import javax.swing.BorderFactory;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import java.awt.BorderLayout;
@@ -11,6 +12,7 @@ import java.awt.Cursor;
 import java.awt.Dimension;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+import java.util.function.Consumer;
 
 /**
  * One shop: the name is a wiki link, the price is its own column, and map is a separate action.
@@ -19,6 +21,11 @@ public final class ShopRows {
 
     private static final Color LINK = new Color(100, 180, 255);
     private static final Color NAME = new Color(190, 190, 190);
+    /** Gold, not the shop-name blue, so the control reads as an action. */
+    public static final Color MAP_ACTION = new Color(196, 163, 90);
+    public static final String MAP_LINK = "\u2316 Show on map";
+    public static final String MAP_OPENING = "\u2316 Opening map\u2026";
+    public static final String MAP_PINNED = "\u2316 Pinned. Open the world map to view.";
 
     private ShopRows() {
     }
@@ -28,7 +35,7 @@ public final class ShopRows {
         ShopEntry shop,
         TradeCopy.ShopLine line,
         Runnable openWiki,
-        Runnable showMap
+        Consumer<WrappingLabel> showMap
     ) {
         JPanel row = new JPanel(new BorderLayout(6, 0)) {
             @Override
@@ -75,16 +82,14 @@ public final class ShopRows {
         JPanel text = new JPanel(new BorderLayout(0, 0));
         text.setOpaque(false);
         text.add(title, BorderLayout.CENTER);
-        WrappingLabel map = new WrappingLabel();
-        if (style != null) {
-            style.apply(map, "small");
-        }
-        map.setForeground(LINK);
-        map.setHtml("Show on map");
-        map.setToolTipText("Put this shop on the world map");
-        map.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        WrappingLabel map = mapLink(style);
         if (showMap != null) {
-            map.addMouseListener(click(showMap));
+            map.addMouseListener(new MouseAdapter() {
+                @Override
+                public void mouseClicked(MouseEvent e) {
+                    showMap.accept(map);
+                }
+            });
         }
         text.add(map, BorderLayout.SOUTH);
 
@@ -92,6 +97,20 @@ public final class ShopRows {
         row.add(price, BorderLayout.EAST);
         row.setToolTipText(name + " " + priceText);
         return row;
+    }
+
+    /** Indented, smaller, gold action. Not the same blue as a shop or monster name. */
+    public static WrappingLabel mapLink(UiStyle style) {
+        WrappingLabel map = new WrappingLabel();
+        if (style != null) {
+            style.apply(map, "small");
+        }
+        map.setForeground(MAP_ACTION);
+        map.setHtml(MAP_LINK);
+        map.setBorder(BorderFactory.createEmptyBorder(0, 16, 2, 0));
+        map.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        map.setToolTipText("Pin this place and open the world map");
+        return map;
     }
 
     public static String priceText(ShopEntry shop) {

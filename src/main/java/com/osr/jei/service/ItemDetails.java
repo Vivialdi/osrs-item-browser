@@ -15,6 +15,7 @@ import com.osr.jei.wiki.ShopTableParser;
 
 import java.util.Collections;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 
 /** Everything parsed from a single item-page response. */
@@ -97,7 +98,7 @@ public final class ItemDetails {
         if (page == null || page.missing) {
             return MISSING;
         }
-        String shopsHtml = firstSection(page.html, "Shop_locations", "Shops", "Sold_by", "Store_locations");
+        String shopsHtml = shopSection(page.html);
         String sourcesHtml = firstSection(page.html, "Item_sources", "Sources", "Drop_sources", "Drops");
         String productsHtml = firstSection(page.html, "Products", "Uses", "Items_created", "Created_from");
         return new ItemDetails(
@@ -109,6 +110,26 @@ public final class ItemDetails {
             UsedInService.parseProductsTable(productsHtml),
             RequirementParser.parse(page.wikitext)
         );
+    }
+
+    /**
+     * Shop rows live in a {@code store-locations-list} table. Prefer the shop
+     * heading, but if that slice has no such table, scan the rest of the page.
+     * Some pages render the table under a heading id this plugin does not know.
+     */
+    private static String shopSection(String html) {
+        String slice = firstSection(html, "Shop_locations", "Shops", "Sold_by", "Store_locations");
+        if (hasStoreTable(slice)) {
+            return slice;
+        }
+        if (hasStoreTable(html)) {
+            return html;
+        }
+        return slice;
+    }
+
+    private static boolean hasStoreTable(String html) {
+        return html != null && html.toLowerCase(Locale.ROOT).contains("store-locations-list");
     }
 
     private static String firstSection(String html, String... ids) {

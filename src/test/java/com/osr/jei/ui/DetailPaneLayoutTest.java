@@ -16,7 +16,9 @@ import org.junit.Test;
 import javax.imageio.ImageIO;
 import javax.swing.BoxLayout;
 import javax.swing.BorderFactory;
+import javax.swing.ImageIcon;
 import javax.swing.JComboBox;
+import javax.swing.SwingConstants;
 import javax.swing.Box;
 import javax.swing.JComponent;
 import javax.swing.JLabel;
@@ -30,6 +32,7 @@ import java.awt.Container;
 import java.awt.Dimension;
 import java.awt.Graphics2D;
 import java.awt.Point;
+import java.awt.Rectangle;
 import java.awt.image.BufferedImage;
 import java.io.File;
 import java.util.ArrayList;
@@ -99,6 +102,7 @@ public class DetailPaneLayoutTest {
                 assertTrue(visibleText(open.detail).contains("Magic Guild Store"));
                 assertFalse(visibleText(open.detail).contains("\u2014"));
                 assertTrue(visibleText(open.detail).contains("Show on map"));
+                assertMapLinkIsAnAction(open.detail);
                 assertFalse(visibleText(narrow.detail).contains("Instant sell"));
                 assertTrue(visibleText(narrow.detail).contains("High Alch"));
                 assertFalse(joinedVisibleLabels(narrow.detail).contains("Instant sell")
@@ -168,6 +172,38 @@ public class DetailPaneLayoutTest {
                 assertTrue(haveAt.y > nameAt.y);
                 assertTrue(nameAt.x > 24);
                 write(tree.image, "air-rune-tree-225.png");
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        });
+    }
+
+    @Test
+    public void treeIconBoundsFitInsideTheRow() throws Exception {
+        SwingUtilities.invokeAndWait(() -> {
+            try {
+                UiStyle style = UiStyle.from(18, FontStyleChoice.REGULAR, FontFamilyChoice.SANS_SERIF);
+                Render tree = treePane(160, style);
+                BufferedImage sprite = new BufferedImage(32, 32, BufferedImage.TYPE_INT_ARGB);
+                Graphics2D drawn = sprite.createGraphics();
+                drawn.setColor(new Color(220, 40, 40));
+                drawn.fillRect(0, 0, 32, 8);
+                drawn.setColor(new Color(40, 180, 60));
+                drawn.fillRect(0, 24, 32, 8);
+                drawn.dispose();
+                int stamped = stampTreeIcons(tree.detail, new ImageIcon(sprite));
+                assertTrue(stamped > 0);
+                tree.detail.setSize(tree.detail.getWidth(), Math.max(40, tree.detail.getPreferredSize().height));
+                layoutDeep(tree.detail);
+                BufferedImage image = new BufferedImage(
+                    tree.detail.getWidth(), tree.detail.getHeight(), BufferedImage.TYPE_INT_RGB);
+                Graphics2D graphics = image.createGraphics();
+                graphics.setColor(ColorScheme.DARKER_GRAY_COLOR);
+                graphics.fillRect(0, 0, image.getWidth(), image.getHeight());
+                tree.detail.paint(graphics);
+                graphics.dispose();
+                assertIconsInsideRows(tree.detail, tree.detail, image);
+                write(image, "tree-icons-160.png");
             } catch (Exception e) {
                 throw new RuntimeException(e);
             }
@@ -373,7 +409,10 @@ public class DetailPaneLayoutTest {
     }
 
     private static Render treePane(int width) {
-        UiStyle style = UiStyle.from(12, FontStyleChoice.REGULAR, FontFamilyChoice.SANS_SERIF);
+        return treePane(width, UiStyle.from(12, FontStyleChoice.REGULAR, FontFamilyChoice.SANS_SERIF));
+    }
+
+    private static Render treePane(int width, UiStyle style) {
         RecipeInfo nested = new RecipeInfo(
             "Runecraft", 27, "Air Altar", 7.5,
             Collections.singletonList(new RecipeIngredient("Daeyalt essence", 1)),
@@ -554,7 +593,7 @@ public class DetailPaneLayoutTest {
         shops.setTitle(SectionSummaries.shops(sampleShops()));
         for (ShopEntry shop : sampleShops()) {
             TradeCopy.ShopLine line = TradeCopy.shop(false, shop, 6);
-            shops.body().add(ShopRows.row(style, shop, line, () -> { }, () -> { }));
+            shops.body().add(ShopRows.row(style, shop, line, () -> { }, label -> { }));
         }
         detail.add(shops);
 
@@ -598,6 +637,69 @@ public class DetailPaneLayoutTest {
             Collections.singletonList(new RecipeIngredient("Pure essence", 1)),
             1, "");
         return Arrays.asList(essence, pure);
+    }
+
+    private static void assertMapLinkIsAnAction(Component root) {
+        JLabel map = findText(root, "Show on map");
+        JLabel shop = findText(root, "Aubury");
+        assertTrue(map != null && shop != null);
+        assertTrue(map.getText().contains("\u2316"));
+        assertTrue(map.getForeground().getBlue() < 140);
+        assertTrue(shop.getForeground().getBlue() > 200);
+        assertTrue(map.getBorder() != null && map.getBorder().getBorderInsets(map).left >= 12);
+        assertTrue(map.getFont().getSize() <= shop.getFont().getSize());
+    }
+
+    private static int stampTreeIcons(Component component, ImageIcon icon) {
+        int count = 0;
+        if (component instanceof JComponent) {
+            Object role = ((JComponent) component).getClientProperty("jei.role");
+            if ("tree-icon".equals(role) && component instanceof JLabel) {
+                ((JLabel) component).setIcon(icon);
+                count++;
+            }
+        }
+        if (component instanceof Container) {
+            for (Component child : ((Container) component).getComponents()) {
+                count += stampTreeIcons(child, icon);
+            }
+        }
+        return count;
+    }
+
+    private static void assertIconsInsideRows(Component root, Component component, BufferedImage image) {
+        if (component instanceof JComponent) {
+            Object role = ((JComponent) component).getClientProperty("jei.role");
+            if ("tree-icon".equals(role) && component instanceof JLabel) {
+                JLabel icon = (JLabel) component;
+                assertEquals(SwingConstants.TOP, icon.getVerticalAlignment());
+                assertTrue(icon.getIcon() != null);
+                assertTrue("icon cell is shorter than the image",
+                    icon.getHeight() >= icon.getIcon().getIconHeight());
+                assertTrue(icon.getWidth() >= icon.getIcon().getIconWidth());
+                Container row = icon.getParent() == null ? null : icon.getParent().getParent();
+                assertTrue(row != null);
+                Rectangle inRow = SwingUtilities.convertRectangle(icon.getParent(), icon.getBounds(), row);
+                assertTrue("icon starts above its row: " + inRow.y, inRow.y >= -1);
+                assertTrue("icon extends past its row: " + (inRow.y + inRow.height) + " > " + row.getHeight(),
+                    inRow.y + inRow.height <= row.getHeight() + 1);
+                Point top = SwingUtilities.convertPoint(icon, 4, 2, root);
+                Point bottom = SwingUtilities.convertPoint(icon, 4, 28, root);
+                assertTrue(top.x >= 0 && top.y >= 0 && top.x < image.getWidth() && top.y < image.getHeight());
+                assertTrue(bottom.y < image.getHeight());
+                int topRgb = image.getRGB(top.x, top.y);
+                int bottomRgb = image.getRGB(bottom.x, bottom.y);
+                assertTrue("top of the icon is clipped, rgb=" + Integer.toHexString(topRgb),
+                    (topRgb & 0xff) < 80 && ((topRgb >> 16) & 0xff) > 150);
+                assertTrue("bottom of the icon is clipped, rgb=" + Integer.toHexString(bottomRgb),
+                    (bottomRgb & 0xff) < 100 && ((bottomRgb >> 8) & 0xff) > 120);
+            }
+        }
+        if (component instanceof Container) {
+            for (Component child : ((Container) component).getComponents()) {
+                assertIconsInsideRows(root, child, image);
+            }
+        }
     }
 
     private static void assertNoOverflow(Render render) {

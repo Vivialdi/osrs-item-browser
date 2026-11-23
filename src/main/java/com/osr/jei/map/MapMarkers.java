@@ -59,7 +59,8 @@ public class MapMarkers {
 
     /**
      * Loads coordinates for one page title, then shows them. {@code status} runs
-     * on the EDT with "ok", "none", or "failed".
+     * on the EDT with "opened", "pinned", "none", or "failed". "pinned" means
+     * the pins are placed but the world-map orb was not on screen to open.
      */
     public void show(String title, Consumer<String> status) {
         if (title == null || title.trim().isEmpty() || pages == null) {
@@ -69,8 +70,11 @@ public class MapMarkers {
         String key = title.trim().toLowerCase(java.util.Locale.ROOT);
         List<MapPins.Pin> cached = pins.get(key, System.currentTimeMillis());
         if (cached != null) {
-            place(title, cached);
-            report(status, cached.isEmpty() ? "none" : "ok");
+            if (cached.isEmpty()) {
+                report(status, "none");
+            } else {
+                place(title, cached, status);
+            }
             return;
         }
         pages.load(title).whenComplete((page, error) -> {
@@ -80,8 +84,13 @@ public class MapMarkers {
             if (error == null && page != null) {
                 pins.put(key, parsed, System.currentTimeMillis());
             }
-            place(title, parsed);
-            report(status, error != null ? "failed" : (parsed.isEmpty() ? "none" : "ok"));
+            if (error != null) {
+                report(status, "failed");
+            } else if (parsed.isEmpty()) {
+                report(status, "none");
+            } else {
+                place(title, parsed, status);
+            }
         });
     }
 
@@ -100,17 +109,21 @@ public class MapMarkers {
         }
     }
 
-    private void place(String title, List<MapPins.Pin> parsed) {
+    private void place(String title, List<MapPins.Pin> parsed, Consumer<String> status) {
         if (clientThread == null) {
+            report(status, "pinned");
             return;
         }
         List<MapPins.Pin> copy = new ArrayList<>(parsed);
-        clientThread.invokeLater(() -> placeOnClient(title, copy));
+        clientThread.invokeLater(() -> {
+            boolean opened = placeOnClient(title, copy);
+            report(status, opened ? "opened" : "pinned");
+        });
     }
 
-    private void placeOnClient(String title, List<MapPins.Pin> parsed) {
+    private boolean placeOnClient(String title, List<MapPins.Pin> parsed) {
         if (points == null || parsed.isEmpty()) {
-            return;
+            return false;
         }
         WorldPoint first = null;
         for (MapPins.Pin pin : parsed) {
@@ -128,26 +141,40 @@ public class MapMarkers {
             points.add(marker);
             active.add(marker);
         }
-        if (first != null) {
-            pending = first;
-            jumpTicks = JUMP_TICKS;
-            openAndJump(first);
+        if (first == null) {
+            return false;
         }
+        pending = first;
+        jumpTicks = JUMP_TICKS;
+        return openAndJump(first);
     }
 
-    private void openAndJump(WorldPoint world) {
+    /**
+     * Opens the world map by invoking the minimap orb, then centres on the pin.
+     * {@code InterfaceID.Orbs.WORLDMAP} is the orb graphic and does not take the
+     * click; the button is {@code ORB_WORLDMAP}. This is the same public
+     * {@code menuAction} the client uses for that orb. No reflection.
+     *
+     * @return false when the map is not open and the orb is not on screen, so
+     *     the caller can tell the player to open the map (the pending point is
+     *     still applied the next time the map is open)
+     */
+    private boolean openAndJump(WorldPoint world) {
         if (client == null || client.getWorldMap() == null) {
-            return;
-        }
-        Widget map = client.getWidget(InterfaceID.Worldmap.MAP_CONTAINER);
-        boolean open = map != null && !map.isHidden();
-        if (!open) {
-            Widget button = client.getWidget(InterfaceID.Orbs.WORLDMAP);
-            if (button != null) {
-                client.menuAction(-1, button.getId(), MenuAction.CC_OP, 1, -1, "World Map", "");
-            }
+            return false;
         }
         client.getWorldMap().setWorldMapPositionTarget(world);
+        Widget map = client.getWidget(InterfaceID.Worldmap.MAP_CONTAINER);
+        if (map != null && !map.isHidden()) {
+            return true;
+        }
+        Widget button = client.getWidget(InterfaceID.Orbs.ORB_WORLDMAP);
+        if (button == null || button.isHidden()) {
+            return false;
+        }
+        client.menuAction(button.getIndex(), button.getId(), MenuAction.CC_OP, 1, -1, "World Map", "");
+        client.getWorldMap().setWorldMapPositionTarget(world);
+        return true;
     }
 
     private void clearOnClient() {

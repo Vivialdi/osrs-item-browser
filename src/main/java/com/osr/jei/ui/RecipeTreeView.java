@@ -219,6 +219,12 @@ public final class RecipeTreeView {
                 Dimension preferred = getPreferredSize();
                 return new Dimension(Integer.MAX_VALUE, preferred.height);
             }
+
+            @Override
+            public Dimension getMinimumSize() {
+                Dimension preferred = getPreferredSize();
+                return new Dimension(0, preferred.height);
+            }
         };
         row.setBackground(ColorScheme.DARKER_GRAY_COLOR);
         row.setAlignmentX(0f);
@@ -231,10 +237,35 @@ public final class RecipeTreeView {
             String itemName = node.name;
             toggle.addActionListener(e -> actions.toggle(path, itemName));
             toggle.setPreferredSize(new Dimension(18, 18));
-            row.add(toggle, BorderLayout.WEST);
+            toggle.setMaximumSize(new Dimension(18, 18));
+            JPanel toggleWrap = new JPanel(new BorderLayout());
+            toggleWrap.setOpaque(false);
+            toggleWrap.add(toggle, BorderLayout.NORTH);
+            row.add(toggleWrap, BorderLayout.WEST);
         }
-        JLabel icon = new JLabel();
-        icon.setPreferredSize(new Dimension(22, 22));
+        JLabel icon = new JLabel() {
+            @Override
+            public Dimension getPreferredSize() {
+                return iconSize(this);
+            }
+
+            @Override
+            public Dimension getMinimumSize() {
+                return iconSize(this);
+            }
+
+            @Override
+            public void setIcon(javax.swing.Icon image) {
+                super.setIcon(image);
+                if (getParent() != null) {
+                    getParent().revalidate();
+                }
+            }
+        };
+        icon.putClientProperty("jei.role", "tree-icon");
+        icon.setVerticalAlignment(javax.swing.SwingConstants.TOP);
+        icon.setHorizontalAlignment(javax.swing.SwingConstants.CENTER);
+        icon.setAlignmentY(0f);
         actions.icon(icon, node.name);
         boolean open = actions.canOpen(node.name);
         String text = quantityText(node.name, node.quantity);
@@ -312,6 +343,18 @@ public final class RecipeTreeView {
         center.add(lines, BorderLayout.CENTER);
         row.add(center, BorderLayout.CENTER);
         return row;
+    }
+
+    /** Inventory sprites are about 32–36px. The cell must not be shorter than the image. */
+    static Dimension iconSize(JLabel icon) {
+        int width = 36;
+        int height = 36;
+        javax.swing.Icon image = icon.getIcon();
+        if (image != null) {
+            width = Math.max(width, image.getIconWidth());
+            height = Math.max(height, image.getIconHeight());
+        }
+        return new Dimension(width, height);
     }
 
     private static String ownedSuffix(Counts counts, String itemName, long need, boolean baseMaterial) {

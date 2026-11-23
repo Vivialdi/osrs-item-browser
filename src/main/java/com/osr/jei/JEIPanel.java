@@ -2054,7 +2054,7 @@ public class JEIPanel extends PluginPanel {
             String shopName = shop.shopName;
             shopsContent.add(ShopRows.row(style, shop, line,
                 () -> openWiki(shopName),
-                () -> showOnMap(shopName)));
+                label -> showOnMap(shopName, label)));
             shopsContent.add(Box.createRigidArea(new Dimension(0, 4)));
         }
     }
@@ -2503,20 +2503,44 @@ public class JEIPanel extends PluginPanel {
         wiki.setForeground(LINK);
         wiki.addActionListener(e -> openWiki(monsterName));
         box.add(wiki);
-        JButton map = linkButton("Show on map", "small");
-        map.setForeground(LINK);
-        map.setToolTipText("Put this monster on the world map");
-        map.addActionListener(e -> showOnMap(monsterName));
+        WrappingLabel map = ShopRows.mapLink(style);
+        String monster = monsterName;
+        map.addMouseListener(new java.awt.event.MouseAdapter() {
+            @Override
+            public void mouseClicked(java.awt.event.MouseEvent e) {
+                showOnMap(monster, map);
+            }
+        });
         box.add(map);
         return box;
     }
 
-    private void showOnMap(String page) {
+    private void showOnMap(String page, WrappingLabel label) {
+        if (label != null) {
+            label.setHtml(ShopRows.MAP_OPENING);
+        }
         if (mapMarkers == null || page == null || page.isEmpty()) {
+            if (label != null) {
+                label.setHtml(ShopRows.MAP_PINNED);
+            }
             return;
         }
-        mapMarkers.show(page, status -> {
-        });
+        mapMarkers.show(page, status -> applyMapStatus(label, status));
+    }
+
+    private static void applyMapStatus(WrappingLabel label, String status) {
+        if (label == null || status == null) {
+            return;
+        }
+        if ("opened".equals(status)) {
+            label.setHtml(ShopRows.MAP_OPENING);
+        } else if ("none".equals(status)) {
+            label.setHtml("\u2316 No map pin on the wiki");
+        } else if ("failed".equals(status)) {
+            label.setHtml("\u2316 Could not load the map pin");
+        } else {
+            label.setHtml(ShopRows.MAP_PINNED);
+        }
     }
 
     /** Client thread, once per game tick. Finishes a world-map jump after the map opens. */
