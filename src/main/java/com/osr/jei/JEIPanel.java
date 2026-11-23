@@ -2469,8 +2469,7 @@ public class JEIPanel extends PluginPanel {
             }
         } else {
             replaceLocation(block, monsterName);
-            block.revalidate();
-            block.repaint();
+            showDropChange(block);
         }
         log.debug("Dropped-by toggle for {} painted in {} ms", monsterName, elapsedMs(started));
     }
@@ -2500,7 +2499,7 @@ public class JEIPanel extends PluginPanel {
             long parsed = System.nanoTime();
             SwingUtilities.invokeLater(() -> {
                 long edt = System.nanoTime();
-                if (gen != monsterGeneration.get() || closed) {
+                if (!acceptMonsterResult(gen, monsterGeneration.get(), closed)) {
                     log.debug("Dropped-by result for {} ignored after an item change", monsterName);
                     return;
                 }
@@ -2520,8 +2519,7 @@ public class JEIPanel extends PluginPanel {
                 JPanel block = dropBlocks.get(monsterKey(monsterName));
                 if (block != null && openMonsters.contains(monsterKey(monsterName))) {
                     replaceLocation(block, monsterName);
-                    block.revalidate();
-                    block.repaint();
+                    showDropChange(block);
                 }
                 log.debug(
                     "Dropped-by locations for {} ready: wiki+parse {} ms, EDT wait {} ms, row update {} ms",
@@ -2534,6 +2532,22 @@ public class JEIPanel extends PluginPanel {
         });
     }
 
+    /**
+     * Lays out the drop list now, on this EDT turn, instead of leaving a
+     * revalidate that waits behind the next index or price UI task.
+     */
+    private void showDropChange(JPanel block) {
+        if (dropsContent != null) {
+            dropsContent.revalidate();
+            dropsContent.validate();
+            dropsContent.repaint();
+        } else {
+            block.revalidate();
+            block.validate();
+            block.repaint();
+        }
+    }
+
     private void replaceLocation(JPanel block, String monsterName) {
         while (block.getComponentCount() > 1) {
             block.remove(block.getComponentCount() - 1);
@@ -2541,6 +2555,11 @@ public class JEIPanel extends PluginPanel {
         if (openMonsters.contains(monsterKey(monsterName))) {
             block.add(locationBody(monsterName));
         }
+    }
+
+    /** A monster page that started for a previous item must not paint into the new one. */
+    public static boolean acceptMonsterResult(int capturedGeneration, int currentGeneration, boolean closed) {
+        return !closed && capturedGeneration == currentGeneration;
     }
 
     private static long elapsedMs(long started) {

@@ -38,7 +38,9 @@ public class MonsterService {
         if (cached != null) {
             return CompletableFuture.completedFuture(cached);
         }
+        final long requested = System.nanoTime();
         return pages.loadWikitext(monsterName).handle((page, error) -> {
+            long arrived = System.nanoTime();
             if (error != null) {
                 Throwable cause = error.getCause() == null ? error : error.getCause();
                 if (cause instanceof RequestCancelledException) {
@@ -47,9 +49,16 @@ public class MonsterService {
                 log.debug("[JEI] Monster info failed for '{}': {}", monsterName, cause.getMessage());
                 throw new CompletionException(cause);
             }
+            long parseStarted = System.nanoTime();
             Optional<MonsterInfo> info = page.missing
                 ? Optional.empty()
                 : MonsterParser.parse(monsterName, page.wikitext);
+            log.debug(
+                "Monster {} wiki {} ms, parse {} ms. Not queued on the client thread or the panel scheduler.",
+                monsterName,
+                (arrived - requested) / 1_000_000L,
+                (System.nanoTime() - parseStarted) / 1_000_000L
+            );
             cache.put(key, info, System.currentTimeMillis());
             return info;
         });

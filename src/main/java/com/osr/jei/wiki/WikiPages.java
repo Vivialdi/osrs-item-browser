@@ -114,8 +114,17 @@ public class WikiPages {
         }
         String encoded = URLEncoder.encode(title.replace(' ', '_'), StandardCharsets.UTF_8);
         String url = (rendered ? API : WIKITEXT_API) + encoded;
+        final long sent = System.nanoTime();
+        if (!rendered) {
+            log.debug("Wiki wikitext request sent for {}", title);
+        }
         try {
-            wikiHttp.getWiki(url).whenComplete((root, error) -> finish(key, flight, title, created, root, error, rendered));
+            wikiHttp.getWiki(url).whenComplete((root, error) -> {
+                if (!rendered) {
+                    log.debug("Wiki wikitext response for {} in {} ms", title, (System.nanoTime() - sent) / 1_000_000L);
+                }
+                finish(key, flight, title, created, root, error, rendered);
+            });
         } catch (RuntimeException e) {
             finish(key, flight, title, created, null, e, rendered);
         }
