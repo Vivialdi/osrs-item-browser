@@ -4,9 +4,8 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * Collapsed or expanded choice for each detail section, kept for the session.
- * Lists start collapsed. Monster locations start open, because that header is
- * shown only after the monster row itself was opened.
+ * Collapsed or expanded choice for the detail sections of the open item.
+ * Every section starts collapsed. Switching items clears the choices.
  */
 public final class SectionState {
 
@@ -22,10 +21,12 @@ public final class SectionState {
 
     public boolean expanded(String key) {
         Boolean value = expanded.get(key);
-        if (value != null) {
-            return value.booleanValue();
-        }
-        return LOCATIONS.equals(key);
+        return value != null && value.booleanValue();
+    }
+
+    /** Back to collapsed for every section. Used when the open item changes. */
+    public void reset() {
+        expanded.clear();
     }
 
     public void setExpanded(String key, boolean value) {

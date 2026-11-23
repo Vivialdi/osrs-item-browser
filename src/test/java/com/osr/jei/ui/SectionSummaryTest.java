@@ -59,12 +59,20 @@ public class SectionSummaryTest {
         assertFalse(state.expanded(SectionState.SHOPS));
         assertFalse(state.expanded(SectionState.DROPS));
         assertFalse(state.expanded(SectionState.CRAFTING));
-        assertTrue(state.expanded(SectionState.LOCATIONS));
+        assertFalse(state.expanded(SectionState.LOCATIONS));
+        assertFalse(state.expanded(SectionState.TRADING));
         assertTrue(state.toggle(SectionState.SHOPS));
         assertTrue(state.expanded(SectionState.SHOPS));
         assertFalse(state.expanded(SectionState.DROPS));
         assertFalse(state.toggle(SectionState.SHOPS));
-        state.setExpanded(SectionState.LOCATIONS, false);
+        state.setExpanded(SectionState.TRADING, true);
+        state.setExpanded(SectionState.DROPS, true);
+        state.setExpanded(SectionState.CRAFTING, true);
+        state.reset();
+        assertFalse(state.expanded(SectionState.SHOPS));
+        assertFalse(state.expanded(SectionState.TRADING));
+        assertFalse(state.expanded(SectionState.DROPS));
+        assertFalse(state.expanded(SectionState.CRAFTING));
         assertFalse(state.expanded(SectionState.LOCATIONS));
         assertFalse(state.expanded(SectionState.USED_IN));
     }

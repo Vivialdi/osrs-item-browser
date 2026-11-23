@@ -44,12 +44,12 @@ public final class LabeledFilters {
         int labelWidth = Math.max(36, name.getPreferredSize().width);
         name.setPreferredSize(new Dimension(labelWidth, name.getPreferredSize().height));
         name.setMinimumSize(new Dimension(labelWidth, name.getPreferredSize().height));
-        JPanel line = new JPanel(new BorderLayout(6, 0)) {
+        JPanel line = new JPanel(new BorderLayout(8, 0)) {
             @Override
             public Dimension getPreferredSize() {
                 Dimension fieldSize = field.getPreferredSize();
                 int height = Math.max(fieldSize.height, name.getPreferredSize().height);
-                return new Dimension(labelWidth + 6 + Math.max(80, fieldSize.width), height);
+                return new Dimension(labelWidth + 8 + Math.max(80, fieldSize.width), height);
             }
 
             @Override

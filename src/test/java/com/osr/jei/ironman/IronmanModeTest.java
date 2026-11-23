@@ -41,7 +41,8 @@ public class IronmanModeTest {
         assertTrue(iron.indexOf(DetailLayout.SHOPS) < iron.indexOf(DetailLayout.DROPS));
         assertTrue(iron.indexOf(DetailLayout.DROPS) < iron.indexOf(DetailLayout.CRAFTING));
         assertTrue(iron.indexOf(DetailLayout.CRAFTING) < iron.indexOf(DetailLayout.GE));
-        assertEquals(DetailLayout.ALCH, iron.get(0));
+        assertEquals(DetailLayout.SHOPS, iron.get(0));
+        assertFalse(iron.contains(DetailLayout.ALCH));
 
         List<String> standard = DetailLayout.order(false);
         assertTrue(standard.indexOf(DetailLayout.GE) < standard.indexOf(DetailLayout.SHOPS));

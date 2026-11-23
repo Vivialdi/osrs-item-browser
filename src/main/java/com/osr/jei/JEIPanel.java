@@ -169,6 +169,8 @@ public class JEIPanel extends PluginPanel {
     private final AtomicInteger searchGeneration = new AtomicInteger();
     private final AtomicInteger detailGeneration = new AtomicInteger();
     private final AtomicInteger monsterGeneration = new AtomicInteger();
+    private final java.util.concurrent.atomic.AtomicBoolean indexUiQueued = new java.util.concurrent.atomic.AtomicBoolean();
+    private volatile boolean indexUiPending;
 
     private final Object favouritesLock = new Object();
     private final Set<Integer> favouriteIds = new LinkedHashSet<>();
@@ -236,6 +238,7 @@ public class JEIPanel extends PluginPanel {
     /** True while a section header is opening, so that refresh does not start a wiki fetch. */
     private boolean fillingSection;
     private final Set<String> openMonsters = new LinkedHashSet<>();
+    private final Map<String, JPanel> dropBlocks = new java.util.HashMap<>();
     private WrappingLabel pinnedMapLabel;
     private final Map<String, LocationView> locationViews = new HashMap<>();
 
@@ -579,6 +582,12 @@ public class JEIPanel extends PluginPanel {
         searchBar.setIcon(IconTextField.Icon.SEARCH);
         searchBar.setBackground(ColorScheme.DARKER_GRAY_COLOR);
         searchBar.setHoverBackgroundColor(ColorScheme.DARK_GRAY_HOVER_COLOR);
+        // RuneLite's search field is about 30px. The default preferred height is
+        // only the font line, which leaves the text tight against the edges.
+        Dimension natural = searchBar.getPreferredSize();
+        searchBar.setPreferredSize(new Dimension(Math.max(120, natural.width), 30));
+        searchBar.setMinimumSize(new Dimension(0, 30));
+        searchBar.setMaximumSize(new Dimension(Integer.MAX_VALUE, 30));
         searchBar.getDocument().addDocumentListener(new DocumentListener() {
             @Override public void insertUpdate(DocumentEvent e) { onSearch(searchBar.getText()); }
             @Override public void removeUpdate(DocumentEvent e) { onSearch(searchBar.getText()); }
@@ -586,6 +595,7 @@ public class JEIPanel extends PluginPanel {
         });
 
         JPanel row = fullWidthRow();
+        row.setBorder(BorderFactory.createEmptyBorder(4, 0, 8, 0));
         row.add(searchBar, BorderLayout.CENTER);
         return row;
     }
@@ -633,7 +643,11 @@ public class JEIPanel extends PluginPanel {
         style.apply(combo, "small");
         combo.setSelectedItem(selected == null ? values[0] : selected);
         combo.setToolTipText(tip);
-        combo.setMinimumSize(new Dimension(0, combo.getPreferredSize().height));
+        int height = 24;
+        Dimension natural = combo.getPreferredSize();
+        combo.setPreferredSize(new Dimension(Math.max(80, natural.width), height));
+        combo.setMinimumSize(new Dimension(0, height));
+        combo.setMaximumSize(new Dimension(Integer.MAX_VALUE, height));
         combo.addActionListener(e -> {
             if (syncingFilters) {
                 return;
@@ -775,14 +789,6 @@ public class JEIPanel extends PluginPanel {
         priceRetry.addActionListener(e -> retryPrices());
         marketGrid = new StatGrid(style);
         marketGrid.setVisible(false);
-        tradingSection = collapsible(SectionState.TRADING);
-        tradingContent = tradingSection.body();
-        marketBox = verticalBox();
-        marketBox.add(marketGrid);
-        marketBox.add(tradingSection);
-        marketBox.add(lblPriceNote);
-        marketBox.add(priceRetry);
-
         lblHaAlch = new WrappingLabel();
         style.apply(lblHaAlch, "body");
         lblHaAlch.setForeground(GOOD);
@@ -790,8 +796,15 @@ public class JEIPanel extends PluginPanel {
         lblAlchProfit = new WrappingLabel();
         style.apply(lblAlchProfit, "body");
         lblAlchProfit.setVisible(false);
-        alchBox = verticalBox();
-        alchBox.add(lblHaAlch);
+        tradingSection = collapsible(SectionState.TRADING);
+        tradingContent = tradingSection.body();
+        marketBox = verticalBox();
+        marketBox.add(marketGrid);
+        marketBox.add(lblHaAlch);
+        marketBox.add(lblPriceNote);
+        marketBox.add(priceRetry);
+        marketBox.add(tradingSection);
+        alchBox = marketBox;
 
         equipmentSection = collapsible(SectionState.EQUIPMENT);
         equipmentContent = equipmentSection.body();
@@ -953,18 +966,31 @@ public class JEIPanel extends PluginPanel {
             indexScanning = false;
             log.info("[JEI] Item index ready — {} unique items", items.size());
         }
-        SwingUtilities.invokeLater(() -> {
-            if (closed) {
-                return;
-            }
-            if (finished) {
-                showIndexStatus(null);
-            }
-            rebuildHistory();
-            if (!lastSearchQuery.isEmpty()) {
-                onSearch(lastSearchQuery);
-            }
-        });
+        // One pending UI flush. Intermediate chunks must not queue a history
+        // rebuild per 500 ids, or a monster location update waits behind them.
+        indexUiPending = true;
+        if (!indexUiQueued.compareAndSet(false, true)) {
+            return;
+        }
+        SwingUtilities.invokeLater(this::flushIndexUi);
+    }
+
+    private void flushIndexUi() {
+        indexUiQueued.set(false);
+        if (closed || !indexUiPending) {
+            return;
+        }
+        indexUiPending = false;
+        if (!indexScanning && indexPopulated) {
+            showIndexStatus(null);
+        }
+        rebuildHistory();
+        if (!lastSearchQuery.isEmpty()) {
+            onSearch(lastSearchQuery);
+        }
+        if (indexUiPending && indexUiQueued.compareAndSet(false, true)) {
+            SwingUtilities.invokeLater(this::flushIndexUi);
+        }
     }
 
     private void onSearch(String query) {
@@ -1164,16 +1190,10 @@ public class JEIPanel extends PluginPanel {
             return;
         }
         int gen = detailGeneration.incrementAndGet();
-        monsterGeneration.incrementAndGet();
-        pinnedMapLabel = null;
+        resetItemExpansions();
         if (mapMarkers != null) {
             mapMarkers.clear();
         }
-        openMonsters.clear();
-        locationViews.clear();
-        expandedPaths.clear();
-        treeFailed.clear();
-        treeLoadInFlight = false;
         wikiHttp.beginRequest();
         selectedItemName = item.name;
         shownItem = item;
@@ -1188,6 +1208,30 @@ public class JEIPanel extends PluginPanel {
             () -> fetchDetail(gen, item),
             DETAIL_DEBOUNCE_MS,
             TimeUnit.MILLISECONDS);
+    }
+
+    private void resetItemExpansions() {
+        monsterGeneration.incrementAndGet();
+        pinnedMapLabel = null;
+        openMonsters.clear();
+        locationViews.clear();
+        dropBlocks.clear();
+        expandedPaths.clear();
+        treeFailed.clear();
+        treeLoadInFlight = false;
+        sectionState.reset();
+        syncSections();
+    }
+
+    private void syncSections() {
+        CollapsibleSection[] sections = new CollapsibleSection[] {
+            tradingSection, equipmentSection, shopsSection, usedInSection, dropsSection, recipeSection
+        };
+        for (CollapsibleSection section : sections) {
+            if (section != null) {
+                section.sync();
+            }
+        }
     }
 
     private void fetchDetail(int gen, SearchItem item) {
@@ -2314,6 +2358,7 @@ public class JEIPanel extends PluginPanel {
 
     private void populateDrops(List<DropEntry> drops) {
         dropsContent.removeAll();
+        dropBlocks.clear();
         if (!config.showDropSources() || drops == null || drops.isEmpty()) {
             dropsSection.setVisible(false);
             return;
@@ -2328,7 +2373,9 @@ public class JEIPanel extends PluginPanel {
         dropsContent.add(Box.createRigidArea(new Dimension(0, 4)));
         DropSort sort = config.dropSort() == null ? DropSort.RATE : config.dropSort();
         for (DropEntry drop : DropSorter.ordered(drops, sort)) {
-            dropsContent.add(buildDropRow(drop));
+            JPanel block = buildDropRow(drop);
+            dropBlocks.put(monsterKey(drop.getSource()), block);
+            dropsContent.add(block);
             dropsContent.add(Box.createRigidArea(new Dimension(0, 2)));
         }
     }
@@ -2408,15 +2455,24 @@ public class JEIPanel extends PluginPanel {
     }
 
     private void toggleMonster(String monsterName) {
+        long started = System.nanoTime();
         String key = monsterKey(monsterName);
         if (!openMonsters.add(key)) {
             openMonsters.remove(key);
         } else {
             ensureMonster(monsterName);
         }
-        if (shownDetails != null) {
-            populateDrops(shownDetails.drops);
+        JPanel block = dropBlocks.get(key);
+        if (block == null) {
+            if (shownDetails != null) {
+                populateDrops(shownDetails.drops);
+            }
+        } else {
+            replaceLocation(block, monsterName);
+            block.revalidate();
+            block.repaint();
         }
+        log.debug("Dropped-by toggle for {} painted in {} ms", monsterName, elapsedMs(started));
     }
 
     /**
@@ -2438,26 +2494,61 @@ public class JEIPanel extends PluginPanel {
         view.error = null;
         int gen = monsterGeneration.get();
         final LocationView pending = view;
-        monsterService.getMonsterInfo(monsterName).whenComplete((info, error) -> SwingUtilities.invokeLater(() -> {
-            if (gen != monsterGeneration.get() || closed) {
-                return;
-            }
-            pending.loading = false;
-            if (error != null) {
-                if (unwrap(error) instanceof RequestCancelledException) {
-                    pending.started = false;
+        final long requested = System.nanoTime();
+        log.debug("Dropped-by fetch started for {}", monsterName);
+        monsterService.getMonsterInfo(monsterName).whenComplete((info, error) -> {
+            long parsed = System.nanoTime();
+            SwingUtilities.invokeLater(() -> {
+                long edt = System.nanoTime();
+                if (gen != monsterGeneration.get() || closed) {
+                    log.debug("Dropped-by result for {} ignored after an item change", monsterName);
                     return;
                 }
-                pending.error = WikiFailures.monster(unwrap(error));
-                pending.info = Optional.empty();
-            } else {
-                pending.error = null;
-                pending.info = info == null ? Optional.empty() : info;
-            }
-            if (shownDetails != null && dropsSection != null && dropsSection.isVisible()) {
-                populateDrops(shownDetails.drops);
-            }
-        }));
+                pending.loading = false;
+                if (error != null) {
+                    if (unwrap(error) instanceof RequestCancelledException) {
+                        pending.started = false;
+                        log.debug("Dropped-by fetch for {} cancelled", monsterName);
+                        return;
+                    }
+                    pending.error = WikiFailures.monster(unwrap(error));
+                    pending.info = Optional.empty();
+                } else {
+                    pending.error = null;
+                    pending.info = info == null ? Optional.empty() : info;
+                }
+                JPanel block = dropBlocks.get(monsterKey(monsterName));
+                if (block != null && openMonsters.contains(monsterKey(monsterName))) {
+                    replaceLocation(block, monsterName);
+                    block.revalidate();
+                    block.repaint();
+                }
+                log.debug(
+                    "Dropped-by locations for {} ready: wiki+parse {} ms, EDT wait {} ms, row update {} ms",
+                    monsterName,
+                    elapsedMs(requested, parsed),
+                    elapsedMs(parsed, edt),
+                    elapsedMs(edt)
+                );
+            });
+        });
+    }
+
+    private void replaceLocation(JPanel block, String monsterName) {
+        while (block.getComponentCount() > 1) {
+            block.remove(block.getComponentCount() - 1);
+        }
+        if (openMonsters.contains(monsterKey(monsterName))) {
+            block.add(locationBody(monsterName));
+        }
+    }
+
+    private static long elapsedMs(long started) {
+        return elapsedMs(started, System.nanoTime());
+    }
+
+    private static long elapsedMs(long started, long ended) {
+        return (ended - started) / 1_000_000L;
     }
 
     private JComponent locationBody(String monsterName) {

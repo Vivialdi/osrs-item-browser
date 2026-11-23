@@ -113,6 +113,11 @@ public final class CollapsibleSection extends JPanel {
         return state.expanded(key);
     }
 
+    /** Applies the current {@link SectionState} without notifying the toggle listener. */
+    public void sync() {
+        apply();
+    }
+
     /**
      * Runs after the body is shown or hidden. The runnable must not assume
      * a wiki fetch; the section itself only changes visibility.

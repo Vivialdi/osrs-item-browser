@@ -192,7 +192,7 @@ public class RecipeTreeViewTest {
             "Runecraft", 9, "Earth Altar", 6.5,
             Arrays.asList(
                 new RecipeIngredient("Rune essence", 100),
-                new RecipeIngredient("Pure essence", 100),
+                new RecipeIngredient("Bronze bar", 1),
                 new RecipeIngredient("Earth talisman", 1)
             ),
             1, "");
@@ -222,10 +222,10 @@ public class RecipeTreeViewTest {
         };
         BuildExpander.Result tree = BuildExpander.expandSelected("Earth rune", 557, root, pages, Collections.emptySet());
         BuildExpander.BuildNode essence = tree.recipes.get(0).ingredients.get(0);
-        BuildExpander.BuildNode pure = tree.recipes.get(0).ingredients.get(1);
+        BuildExpander.BuildNode bar = tree.recipes.get(0).ingredients.get(1);
         BuildExpander.BuildNode talisman = tree.recipes.get(0).ingredients.get(2);
         assertFalse(essence.showExpander);
-        assertTrue(pure.showExpander);
+        assertTrue(bar.showExpander);
         assertTrue(talisman.showExpander);
 
         Set<String> opened = new LinkedHashSet<>();
@@ -242,15 +242,15 @@ public class RecipeTreeViewTest {
             body.doLayout();
             layout(body);
             JLabel essenceIcon = iconInRow(body, "Rune essence");
-            JLabel pureIcon = iconInRow(body, "Pure essence");
-            assertTrue(essenceIcon != null && pureIcon != null);
+            JLabel barIcon = iconInRow(body, "Bronze bar");
+            assertTrue(essenceIcon != null && barIcon != null);
             java.awt.Point essenceAt = SwingUtilities.convertPoint(
                 essenceIcon.getParent(), essenceIcon.getX(), essenceIcon.getY(), body);
-            java.awt.Point pureAt = SwingUtilities.convertPoint(
-                pureIcon.getParent(), pureIcon.getX(), pureIcon.getY(), body);
-            assertEquals(pureAt.x, essenceAt.x);
+            java.awt.Point barAt = SwingUtilities.convertPoint(
+                barIcon.getParent(), barIcon.getX(), barIcon.getY(), body);
+            assertEquals(barAt.x, essenceAt.x);
             assertFalse(rowHasArrow(body, "Rune essence"));
-            assertTrue(rowHasArrow(body, "Pure essence"));
+            assertTrue(rowHasArrow(body, "Bronze bar"));
             assertTrue(rowHasArrow(body, "Earth talisman"));
         });
     }

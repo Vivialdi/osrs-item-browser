@@ -5,8 +5,9 @@ import java.util.Collections;
 import java.util.List;
 
 /**
- * Order of the blocks under the item name. Ironman mode leads with
- * self-sufficient sources and leaves the Grand Exchange line last.
+ * Order of the blocks under the item name. High alch stays in the GE block,
+ * under the buy limit. Ironman mode leads with self-sufficient sources and
+ * leaves that block last.
  */
 public final class DetailLayout {
 
@@ -19,11 +20,11 @@ public final class DetailLayout {
     public static final String CRAFTING = "crafting";
 
     private static final List<String> STANDARD = Collections.unmodifiableList(Arrays.asList(
-        GE, ALCH, EQUIPMENT, SHOPS, USED_IN, DROPS, CRAFTING
+        GE, EQUIPMENT, SHOPS, USED_IN, DROPS, CRAFTING
     ));
 
     private static final List<String> IRONMAN = Collections.unmodifiableList(Arrays.asList(
-        ALCH, SHOPS, DROPS, CRAFTING, EQUIPMENT, USED_IN, GE
+        SHOPS, DROPS, CRAFTING, EQUIPMENT, USED_IN, GE
     ));
 
     private DetailLayout() {

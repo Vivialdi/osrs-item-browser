@@ -372,7 +372,8 @@ public final class RecipeTreeView {
         if (have == null) {
             return "";
         }
-        String fragment = baseMaterial
+        boolean shortfall = com.osr.jei.owned.OwnedItems.stillNeeded(have, need) > 0L;
+        String fragment = baseMaterial && shortfall
             ? OwnedText.stillNeededHtml(have, need, counts.bankKnown())
             : OwnedText.haveNeedHtml(have, need, counts.bankKnown());
         return " \u00b7 " + fragment;

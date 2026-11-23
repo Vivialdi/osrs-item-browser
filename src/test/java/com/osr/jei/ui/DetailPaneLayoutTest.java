@@ -11,6 +11,7 @@ import com.osr.jei.search.SearchCriteria;
 import com.osr.jei.service.ItemDetails;
 import net.runelite.client.ui.ColorScheme;
 import net.runelite.client.ui.PluginPanel;
+import net.runelite.client.ui.components.IconTextField;
 import org.junit.Test;
 
 import javax.imageio.ImageIO;
@@ -105,6 +106,9 @@ public class DetailPaneLayoutTest {
                 assertMapLinkIsAnAction(open.detail);
                 assertFalse(visibleText(narrow.detail).contains("Instant sell"));
                 assertTrue(visibleText(narrow.detail).contains("High Alch"));
+                assertBefore(narrow.detail, "Limit", "High Alch");
+                assertBefore(narrow.detail, "High Alch", "Trading details");
+                assertBefore(narrow.detail, "Trading details", "Shop sources");
                 assertFalse(joinedVisibleLabels(narrow.detail).contains("Instant sell")
                     && joinedVisibleLabels(narrow.detail).contains("after tax")
                     && joinedVisibleLabels(narrow.detail).contains("Per 4h")
@@ -131,6 +135,8 @@ public class DetailPaneLayoutTest {
                 Render results = sidebar(230, true, true);
                 Render wideResults = sidebar(300, true, false);
                 assertFiltersReadable(empty.detail);
+                assertSearchTallerThanFilters(empty.detail);
+                assertSearchTallerThanFilters(results.detail);
                 assertFiltersReadable(noFav.detail);
                 assertFiltersReadable(wideEmpty.detail);
                 assertTrue(empty.detail.getHeight() < 420);
@@ -295,6 +301,44 @@ public class DetailPaneLayoutTest {
         return null;
     }
 
+    private static <E> JComboBox<E> filterCombo(E[] values) {
+        JComboBox<E> combo = new JComboBox<>(values);
+        combo.setPreferredSize(new Dimension(Math.max(80, combo.getPreferredSize().width), 24));
+        combo.setMinimumSize(new Dimension(0, 24));
+        combo.setMaximumSize(new Dimension(Integer.MAX_VALUE, 24));
+        return combo;
+    }
+
+    private static void assertSearchTallerThanFilters(JComponent root) {
+        IconTextField search = findSearch(root);
+        assertTrue(search != null);
+        assertTrue("search field should be about 30px, was " + search.getHeight(),
+            search.getHeight() >= 28 && search.getHeight() <= 34);
+        for (JComboBox<?> combo : findCombos(root)) {
+            assertTrue("filter row should be shorter than the search field",
+                combo.getHeight() < search.getHeight());
+        }
+        Point searchAt = SwingUtilities.convertPoint(search.getParent(), search.getX(), search.getY(), root);
+        Point filterAt = SwingUtilities.convertPoint(
+            findCombos(root).get(0).getParent(), findCombos(root).get(0).getX(), findCombos(root).get(0).getY(), root);
+        assertTrue("search field needs space before the filters", filterAt.y >= searchAt.y + search.getHeight() + 4);
+    }
+
+    private static IconTextField findSearch(Component component) {
+        if (component instanceof IconTextField) {
+            return (IconTextField) component;
+        }
+        if (component instanceof Container) {
+            for (Component child : ((Container) component).getComponents()) {
+                IconTextField found = findSearch(child);
+                if (found != null) {
+                    return found;
+                }
+            }
+        }
+        return null;
+    }
+
     private static void assertFiltersReadable(JComponent root) {
         int combos = 0;
         for (JComboBox<?> combo : findCombos(root)) {
@@ -337,18 +381,22 @@ public class DetailPaneLayoutTest {
         };
         search.setOpaque(false);
         search.setAlignmentX(0f);
-        JLabel field = new JLabel(results ? "  air rune" : "  Search");
-        field.setOpaque(true);
+        search.setBorder(BorderFactory.createEmptyBorder(4, 0, 8, 0));
+        IconTextField field = new IconTextField();
+        field.setIcon(IconTextField.Icon.SEARCH);
         field.setBackground(ColorScheme.DARKER_GRAY_COLOR);
-        field.setForeground(Color.WHITE);
-        field.setPreferredSize(new Dimension(40, 28));
+        if (results) {
+            field.setText("air rune");
+        }
+        Dimension natural = field.getPreferredSize();
+        field.setPreferredSize(new Dimension(Math.max(120, natural.width), 30));
+        field.setMinimumSize(new Dimension(0, 30));
         search.add(field, java.awt.BorderLayout.CENTER);
         panel.add(search);
-        panel.add(Box.createRigidArea(new Dimension(0, 4)));
-        JComboBox<SearchCriteria.Trade> trade = new JComboBox<>(SearchCriteria.Trade.values());
-        JComboBox<SearchCriteria.Members> world = new JComboBox<>(SearchCriteria.Members.values());
-        JComboBox<SearchCriteria.Equip> item = new JComboBox<>(SearchCriteria.Equip.values());
-        JComboBox<SearchCriteria.SlotChoice> slot = new JComboBox<>(SearchCriteria.SlotChoice.values());
+        JComboBox<SearchCriteria.Trade> trade = filterCombo(SearchCriteria.Trade.values());
+        JComboBox<SearchCriteria.Members> world = filterCombo(SearchCriteria.Members.values());
+        JComboBox<SearchCriteria.Equip> item = filterCombo(SearchCriteria.Equip.values());
+        JComboBox<SearchCriteria.SlotChoice> slot = filterCombo(SearchCriteria.SlotChoice.values());
         JPanel filters = LabeledFilters.column(
             null,
             MUTED,
@@ -576,18 +624,19 @@ public class DetailPaneLayoutTest {
         StatGrid grid = new StatGrid(style);
         grid.setRows(rows);
         detail.add(grid);
-        CollapsibleSection trading = new CollapsibleSection(SectionState.TRADING, state, style);
-        trading.setTitle("Trading details");
-        StatGrid tradingGrid = new StatGrid(style);
-        tradingGrid.setRows(tradingRows);
-        trading.body().add(tradingGrid);
-        detail.add(trading);
 
         WrappingLabel alch = new WrappingLabel();
         style.apply(alch, "body");
         alch.setForeground(NEUTRAL);
         alch.setHtml("High Alch: 2 gp");
         detail.add(alch);
+
+        CollapsibleSection trading = new CollapsibleSection(SectionState.TRADING, state, style);
+        trading.setTitle("Trading details");
+        StatGrid tradingGrid = new StatGrid(style);
+        tradingGrid.setRows(tradingRows);
+        trading.body().add(tradingGrid);
+        detail.add(trading);
 
         CollapsibleSection shops = new CollapsibleSection(SectionState.SHOPS, state, style);
         shops.setTitle(SectionSummaries.shops(sampleShops()));
@@ -637,6 +686,17 @@ public class DetailPaneLayoutTest {
             Collections.singletonList(new RecipeIngredient("Pure essence", 1)),
             1, "");
         return Arrays.asList(essence, pure);
+    }
+
+    private static void assertBefore(Component root, String earlier, String later) {
+        JLabel first = findText(root, earlier);
+        JLabel second = findText(root, later);
+        assertTrue("Missing " + earlier, first != null);
+        assertTrue("Missing " + later, second != null);
+        Point firstAt = SwingUtilities.convertPoint(first.getParent(), first.getX(), first.getY(), root);
+        Point secondAt = SwingUtilities.convertPoint(second.getParent(), second.getX(), second.getY(), root);
+        assertTrue(earlier + " at " + firstAt.y + " should be above " + later + " at " + secondAt.y,
+            firstAt.y < secondAt.y);
     }
 
     private static void assertMapLinkIsAnAction(Component root) {

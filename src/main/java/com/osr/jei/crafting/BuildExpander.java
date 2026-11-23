@@ -222,7 +222,7 @@ public final class BuildExpander {
         boolean want = fetchMissing || forcedPaths.contains(path);
         if (!want) {
             ItemDetails cached = pages == null ? null : pages.cached(name);
-            boolean expander = cached == null ? true : hasExpandableRecipe(cached);
+            boolean expander = showExpander(name, cached);
             return new BuildNode(name, quantity, depth, path, false, false, false, false, null, 0, Collections.emptyList(), expander);
         }
 
@@ -270,6 +270,20 @@ public final class BuildExpander {
             ));
         }
         return new BuildNode(name, quantity, depth, path, false, false, false, true, chosen, others, children, true);
+    }
+
+    /**
+     * A classified base material never offers an arrow, even when its page
+     * has not been fetched. An unknown crafted item still does.
+     */
+    private static boolean showExpander(String name, ItemDetails cached) {
+        if (RawMaterials.isBase(name)) {
+            return false;
+        }
+        if (cached == null) {
+            return true;
+        }
+        return hasExpandableRecipe(cached);
     }
 
     private static boolean hasExpandableRecipe(ItemDetails details) {
@@ -328,14 +342,14 @@ public final class BuildExpander {
     }
 
     static Map<String, Long> rollup(List<BuildNode> ingredients) {
-        boolean anyExpanded = false;
+        boolean any = false;
         for (BuildNode ingredient : ingredients) {
-            if (ingredient.expanded || ingredient.loading) {
-                anyExpanded = true;
+            if (ingredient.expanded || ingredient.loading || !ingredient.showExpander) {
+                any = true;
                 break;
             }
         }
-        if (!anyExpanded) {
+        if (!any) {
             return Collections.emptyMap();
         }
         Map<String, Long> totals = new LinkedHashMap<>();
