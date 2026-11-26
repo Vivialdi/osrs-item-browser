@@ -29,7 +29,7 @@ public class LabeledFiltersTest {
         JComboBox<?>[] combos = new JComboBox<?>[] {
             combo(style, SearchCriteria.Trade.values(), SearchCriteria.Trade.ANY),
             combo(style, SearchCriteria.Members.values(), SearchCriteria.Members.FREE),
-            combo(style, SearchCriteria.Equip.values(), SearchCriteria.Equip.NOT_EQUIPABLE),
+            combo(style, SearchCriteria.Equip.values(), SearchCriteria.Equip.ANY),
             combo(style, SearchCriteria.SlotChoice.values(), SearchCriteria.SlotChoice.ANY)
         };
         JPanel filters = LabeledFilters.column(

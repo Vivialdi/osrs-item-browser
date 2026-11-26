@@ -27,11 +27,10 @@ public class DropMergerTest {
         DropEntry cave = merged.get(0);
         assertEquals("Cave goblin miner", cave.getSource());
         assertEquals("11", cave.getLevel());
-        assertEquals("2, 7", cave.getQuantity());
+        assertEquals("Lv. 11\n7 at 1/6.4\n2 at 1/8.53", DropMerger.detail(cave));
         assertEquals("20/128, 15/128", DropMerger.tooltipRate(cave));
-        assertEquals("1/6.4, 1/8.53", DropMerger.rateLabel(cave.getRate(), cave.getQuantity()));
-        assertEquals("28", merged.get(1).getLevel());
-        assertEquals("1/64", DropMerger.rateLabel(merged.get(1).getRate(), merged.get(1).getQuantity()));
+        assertEquals("Lv. 28 \u00b7 1 at 1/64", DropMerger.detail(merged.get(1)));
+        assertEquals("Lv. 2 \u00b7 1 at 1/16", DropMerger.detail(goblin));
         assertSame(goblin, merged.get(2));
     }
 
@@ -41,7 +40,7 @@ public class DropMergerTest {
         List<DropEntry> merged = DropMerger.merge(Collections.singletonList(only));
         assertEquals(1, merged.size());
         assertSame(only, merged.get(0));
-        assertEquals("1/6.4", DropMerger.rateLabel(only.getRate(), only.getQuantity()));
+        assertEquals("Lv. 11 \u00b7 7 at 1/6.4", DropMerger.detail(only));
         assertEquals("20/128", DropMerger.tooltipRate(only));
         assertEquals("Dropped by (1)", SectionSummaries.drops(merged));
     }
@@ -52,8 +51,7 @@ public class DropMergerTest {
         DropEntry upper = drop("Cave goblin miner", "11", "1", "1/100");
         List<DropEntry> merged = DropMerger.merge(Arrays.asList(lower, upper));
         assertEquals(1, merged.size());
-        assertEquals("1, 4", merged.get(0).getQuantity());
-        assertEquals("1/32, 1/100", DropMerger.rateLabel(merged.get(0).getRate(), merged.get(0).getQuantity()));
+        assertEquals("Lv. 11\n4 at 1/32\n1 at 1/100", DropMerger.detail(merged.get(0)));
     }
 
     private static DropEntry drop(String source, String level, String quantity, String rate) {

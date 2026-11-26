@@ -2580,7 +2580,7 @@ public class JEIPanel extends PluginPanel {
     private void paintDropHeader(JLabel chevron, WrappingLabel label, DropEntry drop, boolean open) {
         String detail = dropDetail(drop);
         chevron.setText(DropRowMarks.chevron(open));
-        label.setHtml(DropRowMarks.html(escape(drop.getSource()), escape(detail), open));
+        label.setHtml(DropRowMarks.html(escape(drop.getSource()), detailHtml(detail), open));
         String tip = DropMerger.tooltipRate(drop);
         if (!open) {
             tip = tip == null || tip.isEmpty() ? DropRowMarks.HINT : tip + ". " + DropRowMarks.HINT;
@@ -2609,12 +2609,19 @@ public class JEIPanel extends PluginPanel {
     }
 
     private static String dropDetail(DropEntry drop) {
-        StringBuilder detail = new StringBuilder();
-        appendPiece(detail, drop.getLevel() == null || drop.getLevel().isEmpty() || "?".equals(drop.getLevel())
-            ? "" : "Lv. " + drop.getLevel());
-        appendPiece(detail, drop.getQuantity() == null || "?".equals(drop.getQuantity()) ? "" : drop.getQuantity());
-        appendPiece(detail, DropMerger.rateLabel(drop.getRate(), drop.getQuantity()));
-        return detail.length() == 0 ? "?" : detail.toString();
+        return DropMerger.detail(drop);
+    }
+
+    private static String detailHtml(String detail) {
+        String[] lines = detail == null ? new String[0] : detail.split("\n", -1);
+        StringBuilder html = new StringBuilder();
+        for (int i = 0; i < lines.length; i++) {
+            if (i > 0) {
+                html.append("<br>");
+            }
+            html.append(escape(lines[i]));
+        }
+        return html.toString();
     }
 
     private void replaceLocation(JPanel block, String monsterName) {
