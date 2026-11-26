@@ -7,8 +7,11 @@ import javax.swing.BoxLayout;
 import javax.swing.JPanel;
 import java.awt.BorderLayout;
 import java.awt.Color;
+import java.awt.Container;
 import java.awt.Cursor;
 import java.awt.Dimension;
+import java.awt.event.ContainerAdapter;
+import java.awt.event.ContainerEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 
@@ -67,7 +70,10 @@ public final class CollapsibleSection extends JPanel {
 
         MouseAdapter toggle = new MouseAdapter() {
             @Override
-            public void mouseClicked(MouseEvent e) {
+            public void mousePressed(MouseEvent e) {
+                if (e.getButton() != MouseEvent.BUTTON1) {
+                    return;
+                }
                 toggle();
             }
 
@@ -85,6 +91,14 @@ public final class CollapsibleSection extends JPanel {
         };
         header.addMouseListener(toggle);
         titleLabel.addMouseListener(toggle);
+        titleLabel.addContainerListener(new ContainerAdapter() {
+            @Override
+            public void componentAdded(ContainerEvent event) {
+                if (event.getChild() != null) {
+                    event.getChild().addMouseListener(toggle);
+                }
+            }
+        });
 
         body = new ScrollWidthPanel();
         body.setOpaque(false);
@@ -133,14 +147,15 @@ public final class CollapsibleSection extends JPanel {
     public void toggle() {
         state.toggle(key);
         apply();
-        revalidate();
-        if (getParent() != null) {
-            getParent().revalidate();
-        }
-        repaint();
         if (onToggle != null) {
             onToggle.run();
         }
+        revalidate();
+        Container parent = getParent();
+        if (parent != null) {
+            parent.revalidate();
+        }
+        repaint();
     }
 
     private void apply() {

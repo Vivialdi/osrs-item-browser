@@ -2,7 +2,7 @@ package com.osr.jei;
 
 import com.osr.jei.crafting.BuildExpander;
 import com.osr.jei.crafting.RecipePages;
-import com.osr.jei.drops.DropRate;
+import com.osr.jei.drops.DropMerger;
 import com.osr.jei.drops.DropSort;
 import com.osr.jei.drops.DropSorter;
 import com.osr.jei.equipment.EquipmentCompare;
@@ -2380,11 +2380,12 @@ public class JEIPanel extends PluginPanel {
     private void populateDrops(List<DropEntry> drops) {
         dropsContent.removeAll();
         dropBlocks.clear();
-        if (!config.showDropSources() || drops == null || drops.isEmpty()) {
+        List<DropEntry> merged = DropMerger.merge(drops);
+        if (!config.showDropSources() || merged.isEmpty()) {
             dropsSection.setVisible(false);
             return;
         }
-        dropsSection.setTitle(SectionSummaries.drops(drops));
+        dropsSection.setTitle(SectionSummaries.drops(merged));
         dropsSection.setVisible(true);
         if (!dropsSection.isExpanded()) {
             return;
@@ -2392,7 +2393,7 @@ public class JEIPanel extends PluginPanel {
         dropsContent.add(dropSortControl());
         dropsContent.add(Box.createRigidArea(new Dimension(0, 4)));
         DropSort sort = config.dropSort() == null ? DropSort.RATE : config.dropSort();
-        for (DropEntry drop : DropSorter.ordered(drops, sort)) {
+        for (DropEntry drop : DropSorter.ordered(merged, sort)) {
             JPanel block = buildDropRow(drop);
             dropBlocks.put(monsterKey(drop.getSource()), block);
             dropsContent.add(block);
@@ -2573,8 +2574,7 @@ public class JEIPanel extends PluginPanel {
         String detail = dropDetail(drop);
         chevron.setText(DropRowMarks.chevron(open));
         label.setHtml(DropRowMarks.html(escape(drop.getSource()), escape(detail), open));
-        DropRate rate = DropRate.parse(drop.getRate(), drop.getQuantity());
-        String tip = rate.original == null || rate.original.isEmpty() ? rate.display : rate.original;
+        String tip = DropMerger.tooltipRate(drop);
         if (!open) {
             tip = tip == null || tip.isEmpty() ? DropRowMarks.HINT : tip + ". " + DropRowMarks.HINT;
         }
@@ -2606,8 +2606,7 @@ public class JEIPanel extends PluginPanel {
         appendPiece(detail, drop.getLevel() == null || drop.getLevel().isEmpty() || "?".equals(drop.getLevel())
             ? "" : "Lv. " + drop.getLevel());
         appendPiece(detail, drop.getQuantity() == null || "?".equals(drop.getQuantity()) ? "" : drop.getQuantity());
-        DropRate rate = DropRate.parse(drop.getRate(), drop.getQuantity());
-        appendPiece(detail, "?".equals(rate.display) ? "" : rate.display);
+        appendPiece(detail, DropMerger.rateLabel(drop.getRate(), drop.getQuantity()));
         return detail.length() == 0 ? "?" : detail.toString();
     }
 
