@@ -2,7 +2,7 @@
 
 Submit this plugin to [runelite/plugin-hub](https://github.com/runelite/plugin-hub) after pull request #8 is merged to `master`. Fork the hub repository in your own account and open the hub pull request from that fork.
 
-The hub descriptor below is ready to copy. Leave `commit=REPLACE_WITH_MASTER_MERGE_COMMIT` in this file until `master` has the merge. The hub pull request must use the real 40-character hash, not the placeholder.
+The hub descriptor below is ready to copy. `commit` is `b438ba5d847f3bab963aed7182d8f5aa9cfc82d3`, the commit on `master` from the pull request #8 merge. The hub pull request must use that hash.
 
 ## `plugins/osrs-item-browser`
 
@@ -10,7 +10,7 @@ Create a file named `plugins/osrs-item-browser` (no extension) containing exactl
 
 ```
 repository=https://github.com/Vivialdi/osrs-item-browser.git
-commit=REPLACE_WITH_MASTER_MERGE_COMMIT
+commit=b438ba5d847f3bab963aed7182d8f5aa9cfc82d3
 ```
 
 `commit` is the full 40-character hash of the commit that landed on `master` when pull request #8 was merged. If GitHub squash-merges, that squash commit is the one to use. If GitHub creates a merge commit, use that merge commit. Copy it from the `master` history after the merge. Do not use a commit that exists only on the pull request branch.
@@ -20,7 +20,7 @@ commit=REPLACE_WITH_MASTER_MERGE_COMMIT
 1. Merge pull request #8 (`cursor/compact-detail-pane-7325`) into `master`. Do not merge it from this file, and do not open a hub pull request first.
 2. On GitHub, open the `master` commit that the merge produced and copy its full 40-character hash.
 3. Fork `https://github.com/runelite/plugin-hub` into your own account. Create a branch from that fork's `master`.
-4. Add `plugins/osrs-item-browser` with the two lines above, and replace `REPLACE_WITH_MASTER_MERGE_COMMIT` with the hash from step 2. Change nothing else in the hub repository.
+4. Add `plugins/osrs-item-browser` with the two lines above. Change nothing else in the hub repository.
 5. Commit, push the branch to your fork, and open a pull request against `runelite/plugin-hub` `master`. Describe the plugin in the pull request body.
 6. Read the hub CI log (`build`, and Plugin Hub Checks if it asks for changes). If it fails, fix the plugin in this repository, merge that fix to `master`, and update `commit=` on the hub pull request to the new `master` hash.
 
