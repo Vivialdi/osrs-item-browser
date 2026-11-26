@@ -51,6 +51,7 @@ import com.osr.jei.ui.ShopRows;
 import com.osr.jei.ui.StarButton;
 import com.osr.jei.ui.ScrollWidthPanel;
 import com.osr.jei.ui.SectionState;
+import com.osr.jei.ui.ResultsHeading;
 import com.osr.jei.ui.SectionSummaries;
 import com.osr.jei.ui.ShopSources;
 import com.osr.jei.ui.SplitLayout;
@@ -207,6 +208,7 @@ public class JEIPanel extends PluginPanel {
     private JPanel selectedCell;
     private JScrollPane detailScroll;
     private JPanel historyPanel;
+    private JPanel resultsHeader;
     private JPanel favouritesPanel;
     private IconGridPanel favouriteIcons;
     private JPanel historyIcons;
@@ -314,6 +316,9 @@ public class JEIPanel extends PluginPanel {
         north.add(indexStatus);
         north.add(favouritesPanel);
         north.add(historyPanel);
+        resultsHeader = ResultsHeading.create(style);
+        resultsHeader.setVisible(false);
+        north.add(resultsHeader);
         add(north, BorderLayout.NORTH);
         add(buildContent(), BorderLayout.CENTER);
 
@@ -1076,6 +1081,9 @@ public class JEIPanel extends PluginPanel {
     }
 
     private void showResultGrid(boolean show) {
+        if (resultsHeader != null && resultsHeader.isVisible() != show) {
+            resultsHeader.setVisible(show);
+        }
         if (split == null || gridScroll == null || resultsOpen == show) {
             if (show && split != null && split.getDividerLocation() <= 0 && split.getHeight() > 0) {
                 applyResizeWeight();
