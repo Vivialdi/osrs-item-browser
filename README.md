@@ -9,9 +9,18 @@ The plugin is written in Java 11 and built with Gradle, using the libraries alre
 - **Search and filters.** Type at least two characters. Filter by tradeable, members, equipable, and gear slot. Filters use the game cache. An empty or unmatched search says what was wrong. Favourites and the last viewed items stay in the sidebar.
 - **Item detail pane.** Click a result to open the item. Sections start collapsed: Crafting, Shop sources, Dropped by, Used to craft, and equipment. Each header is one line with a count or a short summary. The drop header is the count, such as `Dropped by (59)`. Drag the divider to give the detail pane more or less of the sidebar.
 
-<img src="docs/images/sidebar-overview.png" width="230" alt="Sidebar with search, filters, favourites, recent, and Iron dagger">
-
-Sidebar: search, filters, favourites, recent, and Iron dagger.
+<table>
+<tr>
+<td align="center" valign="top">
+<img src="docs/images/sidebar-overview.png" width="220" alt="Sidebar with search, filters, favourites, recent, and Iron dagger"><br>
+Sidebar: search, filters, favourites, recent, and Iron dagger
+</td>
+<td align="center" valign="top">
+<img src="docs/images/item-detail-iron-dagger.png" width="220" alt="Iron dagger detail"><br>
+Iron dagger detail
+</td>
+</tr>
+</table>
 
 - **Crafting tree and base materials.** A recipe shows the skill, level, facility, and experience. An ingredient that is itself crafted has an arrow. Rune essence, ores, logs, raw fish, herbs, shop stock, monster drops, and items gathered by Mining, Woodcutting, Fishing, Hunter, or Farming stay as leaves. One **Base materials** summary at the bottom lists what that recipe still needs. A requirement you do not meet is marked on the recipe line.
 
@@ -93,10 +102,6 @@ These are the names shown in the RuneLite config panel, under **OSRS Item Browse
 
 <table>
 <tr>
-<td align="center" valign="top">
-<img src="docs/images/item-detail-iron-dagger.png" width="220" alt="Iron dagger detail"><br>
-Iron dagger detail
-</td>
 <td align="center" valign="top">
 <img src="docs/images/settings.png" width="220" alt="Settings for search, prices, ironman, requirements, and display"><br>
 Settings: search, prices, ironman, requirements, and display
