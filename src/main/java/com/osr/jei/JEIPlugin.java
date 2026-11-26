@@ -545,12 +545,13 @@ public class JEIPlugin extends Plugin {
         BufferedImage img = new BufferedImage(16, 16, BufferedImage.TYPE_INT_ARGB);
         Graphics2D g = img.createGraphics();
         g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-        g.setStroke(new BasicStroke(1.5f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
-        g.setColor(new Color(200, 160, 50));
+        g.setStroke(new BasicStroke(2.6f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        g.setColor(new Color(20, 20, 20));
         g.drawOval(1, 1, 9, 9);
-        g.setColor(new Color(230, 200, 90));
-        g.fillOval(3, 3, 5, 5);
-        g.setColor(new Color(80, 60, 10));
+        g.drawLine(9, 9, 14, 14);
+        g.setStroke(new BasicStroke(1.5f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        g.setColor(new Color(230, 230, 230));
+        g.drawOval(1, 1, 9, 9);
         g.drawLine(9, 9, 14, 14);
         g.dispose();
         return img;
