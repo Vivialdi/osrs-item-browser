@@ -49,7 +49,7 @@ public final class MonsterParser {
                 continue;
             }
             Map<String, String> params = WikiText.parseParams(block);
-            String location = WikiText.clean(params.getOrDefault("location", ""));
+            String location = LocationNames.clean(params.getOrDefault("location", ""));
             if (!location.isEmpty()
                 && !location.equalsIgnoreCase("none")
                 && !location.equalsIgnoreCase("n/a")) {

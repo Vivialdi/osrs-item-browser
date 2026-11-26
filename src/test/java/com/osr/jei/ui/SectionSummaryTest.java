@@ -48,8 +48,16 @@ public class SectionSummaryTest {
         assertEquals("Equipment \u00b7 2h", SectionSummaries.equipment("2h", true));
         assertEquals("Equipment \u00b7 Weapon, two-handed", SectionSummaries.equipment("Weapon", true));
         assertEquals(
-            "Locations (2) \u00b7 Lumbridge Swamp",
+            "Locations (2)",
             SectionSummaries.locations(Arrays.asList("Lumbridge Swamp", "Varrock Sewers")));
+        assertEquals(
+            "Location: Rellekka",
+            SectionSummaries.locations(Collections.singletonList("Rellekka")));
+        assertEquals(
+            "Locations (2)",
+            SectionSummaries.locations(Arrays.asList(
+                "Lovakengj (uk=1 buildings)",
+                "Falador Mining Guild (uk=1)")));
     }
 
     @Test

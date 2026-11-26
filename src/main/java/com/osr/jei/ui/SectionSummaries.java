@@ -4,13 +4,16 @@ import com.osr.jei.ironman.TradeCopy;
 import com.osr.jei.model.DropEntry;
 import com.osr.jei.model.RecipeInfo;
 import com.osr.jei.model.ShopEntry;
+import com.osr.jei.wiki.LocationNames;
 
 import java.util.List;
 import java.util.Locale;
 
 /**
- * One-line headers for detail sections. Shop, crafting, and location
- * headers keep a short summary. The drop header is only the count.
+ * One-line headers for detail sections. Shop and crafting headers keep a
+ * short summary. The drop header is only the count. A location header is
+ * {@code Location: name} for one place and {@code Locations (N)} for more,
+ * with no place name in the count.
  */
 public final class SectionSummaries {
 
@@ -76,22 +79,14 @@ public final class SectionSummaries {
     }
 
     public static String locations(List<String> places) {
-        int count = places == null ? 0 : places.size();
-        if (count == 0) {
+        List<String> shown = LocationNames.distinct(places);
+        if (shown.isEmpty()) {
             return "Locations";
         }
-        String title = "Locations (" + count + ")";
-        String first = "";
-        for (String place : places) {
-            if (place != null && !place.trim().isEmpty()) {
-                first = place.trim();
-                break;
-            }
+        if (shown.size() == 1) {
+            return "Location: " + shown.get(0);
         }
-        if (first.isEmpty()) {
-            return title;
-        }
-        return title + " \u00b7 " + first;
+        return "Locations (" + shown.size() + ")";
     }
 
     public static String shopPlain(ShopEntry shop, TradeCopy.ShopLine line) {

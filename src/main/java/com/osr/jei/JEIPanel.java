@@ -45,6 +45,7 @@ import com.osr.jei.ui.DefaultOpen;
 import com.osr.jei.ui.DropRowMarks;
 import com.osr.jei.ui.EllipsisLabel;
 import com.osr.jei.ui.IconGridPanel;
+import com.osr.jei.ui.LocationLines;
 import com.osr.jei.ui.LabeledFilters;
 import com.osr.jei.ui.RecipeTreeView;
 import com.osr.jei.ui.ShopRows;
@@ -59,6 +60,7 @@ import com.osr.jei.ui.StatGrid;
 import com.osr.jei.ui.UiStyle;
 import com.osr.jei.ui.WrappingButton;
 import com.osr.jei.ui.WrappingLabel;
+import com.osr.jei.wiki.LocationNames;
 import com.osr.jei.wiki.RequestCancelledException;
 import com.osr.jei.wiki.WikiHttp;
 import lombok.extern.slf4j.Slf4j;
@@ -633,7 +635,7 @@ public class JEIPanel extends PluginPanel {
         slotCombo = filterCombo(SearchCriteria.SlotChoice.values(), config.filterSlot(), "filterSlot",
             "One equipment slot, or any slot");
         JPanel filters = LabeledFilters.column(
-            style.forRole("small"),
+            style,
             MUTED,
             new String[]{"Trade", "World", "Item", "Slot"},
             new JComponent[]{tradeCombo, membersCombo, equipCombo, slotCombo}
@@ -666,11 +668,8 @@ public class JEIPanel extends PluginPanel {
         style.apply(combo, "small");
         combo.setSelectedItem(selected == null ? values[0] : selected);
         combo.setToolTipText(tip);
-        int height = 24;
-        Dimension natural = combo.getPreferredSize();
-        combo.setPreferredSize(new Dimension(Math.max(80, natural.width), height));
-        combo.setMinimumSize(new Dimension(0, height));
-        combo.setMaximumSize(new Dimension(Integer.MAX_VALUE, height));
+        sizeFilterCombo(combo);
+        combo.addPropertyChangeListener("font", event -> sizeFilterCombo(combo));
         combo.addActionListener(e -> {
             if (syncingFilters) {
                 return;
@@ -678,6 +677,14 @@ public class JEIPanel extends PluginPanel {
             configManager.setConfiguration("osrjei", key, combo.getSelectedItem());
         });
         return combo;
+    }
+
+    private static void sizeFilterCombo(JComboBox<?> combo) {
+        int line = combo.getFontMetrics(combo.getFont()).getHeight();
+        int height = Math.max(24, line + 4);
+        combo.setPreferredSize(new Dimension(40, height));
+        combo.setMinimumSize(new Dimension(0, height));
+        combo.setMaximumSize(new Dimension(Integer.MAX_VALUE, height));
     }
 
     private void syncFilterControls() {
@@ -2663,17 +2670,11 @@ public class JEIPanel extends PluginPanel {
         if (info != null && info.combatLevel > 0) {
             box.add(plainLabel("Combat " + info.combatLevel, "small", MUTED));
         }
-        if (info == null || info.locations == null || info.locations.isEmpty()) {
+        List<String> places = LocationNames.distinct(info == null ? null : info.locations);
+        if (places.isEmpty()) {
             box.add(plainLabel("No locations are listed for this monster.", "small", MUTED));
         } else {
-            CollapsibleSection locations = new CollapsibleSection(SectionState.LOCATIONS, sectionState, style);
-            locations.setTitle(SectionSummaries.locations(info.locations));
-            for (String place : info.locations) {
-                WrappingLabel line = htmlLine("\u00b7 " + escape(place), "#c8c8c8", "small");
-                line.setToolTipText(place);
-                locations.body().add(line);
-            }
-            box.add(locations);
+            box.add(LocationLines.create(style, sectionState, places));
         }
         JButton wiki = linkButton("Open Wiki page", "button");
         wiki.setForeground(LINK);

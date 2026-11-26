@@ -398,7 +398,7 @@ public class DetailPaneLayoutTest {
         JComboBox<SearchCriteria.Equip> item = filterCombo(SearchCriteria.Equip.values());
         JComboBox<SearchCriteria.SlotChoice> slot = filterCombo(SearchCriteria.SlotChoice.values());
         JPanel filters = LabeledFilters.column(
-            null,
+            (java.awt.Font) null,
             MUTED,
             new String[]{"Trade", "World", "Item", "Slot"},
             new JComponent[]{trade, world, item, slot}
