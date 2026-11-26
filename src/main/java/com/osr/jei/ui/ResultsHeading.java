@@ -11,13 +11,13 @@ import java.awt.Component;
 import java.awt.Dimension;
 
 /**
- * Compact label and rule that sit between Recent and the search-result icons.
+ * Compact label between Recent and the search-result icons.
+ * Same header style as Favourites and Recent: a small gap, then the word.
  */
 public final class ResultsHeading {
 
     public static final String LABEL = "Results";
     private static final Color MUTED = new Color(150, 150, 150);
-    private static final Color RULE = new Color(90, 90, 90);
 
     private ResultsHeading() {
     }
@@ -40,16 +40,7 @@ public final class ResultsHeading {
         bar.setBackground(ColorScheme.DARK_GRAY_COLOR);
         bar.setOpaque(true);
         bar.setAlignmentX(Component.LEFT_ALIGNMENT);
-        bar.setBorder(BorderFactory.createEmptyBorder(6, 0, 2, 0));
-
-        JPanel line = new JPanel();
-        line.setName("resultsRule");
-        line.setOpaque(true);
-        line.setBackground(RULE);
-        line.setAlignmentX(Component.LEFT_ALIGNMENT);
-        line.setPreferredSize(new Dimension(1, 1));
-        line.setMinimumSize(new Dimension(0, 1));
-        line.setMaximumSize(new Dimension(Integer.MAX_VALUE, 1));
+        bar.setBorder(BorderFactory.createEmptyBorder(6, 0, 0, 0));
 
         WrappingLabel label = new WrappingLabel();
         label.setName("resultsLabel");
@@ -58,15 +49,14 @@ public final class ResultsHeading {
         }
         label.setForeground(MUTED);
         label.setAlignmentX(Component.LEFT_ALIGNMENT);
-        label.setBorder(BorderFactory.createEmptyBorder(4, 0, 0, 0));
+        label.setBorder(BorderFactory.createEmptyBorder(0, 0, 2, 0));
         label.setHtml(LABEL);
 
-        bar.add(line);
         bar.add(label);
         return bar;
     }
 
     public static JLabel label(JPanel heading) {
-        return (JLabel) heading.getComponent(heading.getComponentCount() - 1);
+        return (JLabel) heading.getComponent(0);
     }
 }
