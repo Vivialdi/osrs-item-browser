@@ -1,6 +1,6 @@
 # In-game test checklist
 
-Walk through this in a logged-in RuneLite client (`gradle run`, or a sideloaded build). Headless tests do not cover menus, the bank, worn equipment, or the live config panel. Each step has the result you should see. Suggested shots are not in the repo. Do not commit a stand-in image.
+Walk through this in a logged-in RuneLite client (`gradle run`, or a sideloaded build). Headless tests do not cover menus, the bank, worn equipment, or the live config panel. Each step has the result you should see. Real client shots live in `docs/images/` and in the README.
 
 Use a normal account first, then an ironman account for the ironman steps. Have one equipable item, one two-handed weapon, one shield, and one item with a recipe and a drop table (a rune platebody and an abyssal whip are enough).
 

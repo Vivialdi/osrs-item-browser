@@ -1,6 +1,5 @@
 package com.osr.jei.ui;
 
-import com.osr.jei.drops.DropRate;
 import com.osr.jei.ironman.TradeCopy;
 import com.osr.jei.model.DropEntry;
 import com.osr.jei.model.RecipeInfo;
@@ -10,8 +9,8 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * One-line headers for detail sections. The count and the useful extreme
- * (cheapest shop, most common drop) stay visible while the rows are collapsed.
+ * One-line headers for detail sections. Shop, crafting, and location
+ * headers keep a short summary. The drop header is only the count.
  */
 public final class SectionSummaries {
 
@@ -37,19 +36,7 @@ public final class SectionSummaries {
 
     public static String drops(List<DropEntry> drops) {
         int count = drops == null ? 0 : drops.size();
-        String title = "Dropped by (" + count + ")";
-        DropEntry best = mostCommon(drops);
-        if (best == null || best.getSource() == null || best.getSource().isEmpty()) {
-            return title;
-        }
-        DropRate rate = DropRate.parse(best.getRate(), best.getQuantity());
-        String rateText = rate.display == null || rate.display.isEmpty() || "?".equals(rate.display)
-            ? ""
-            : rate.display;
-        if (rateText.isEmpty()) {
-            return title + " \u00b7 " + best.getSource();
-        }
-        return title + " \u00b7 " + best.getSource() + " " + rateText;
+        return "Dropped by (" + count + ")";
     }
 
     public static String uses(List<String> names) {
@@ -165,28 +152,6 @@ public final class SectionSummaries {
     static String formatPrice(ShopEntry shop) {
         String unit = shop.isCoins() ? "gp" : shop.currency;
         return String.format(Locale.ROOT, "%,d\u00a0%s", shop.price, unit);
-    }
-
-    private static DropEntry mostCommon(List<DropEntry> drops) {
-        if (drops == null) {
-            return null;
-        }
-        DropEntry best = null;
-        double bestChance = -1.0;
-        for (DropEntry drop : drops) {
-            if (drop == null) {
-                continue;
-            }
-            DropRate rate = DropRate.parse(drop.getRate(), drop.getQuantity());
-            if (rate.probability == null) {
-                continue;
-            }
-            if (rate.probability > bestChance) {
-                bestChance = rate.probability.doubleValue();
-                best = drop;
-            }
-        }
-        return best;
     }
 
     private static String skillLevel(RecipeInfo recipe) {

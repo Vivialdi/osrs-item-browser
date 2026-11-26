@@ -31,13 +31,12 @@ public class SectionSummaryTest {
     }
 
     @Test
-    public void dropHeaderUsesTheMostCommonRate() {
+    public void dropHeaderIsOnlyTheCount() {
         DropEntry rare = drop("Abyssal demon", "1/1000");
         DropEntry common = drop("Goblin", "1/16");
-        assertEquals(
-            "Dropped by (2) \u00b7 Goblin 1/16",
-            SectionSummaries.drops(Arrays.asList(rare, common)));
-        assertEquals("Dropped by (1) \u00b7 Goblin 1/16", SectionSummaries.drops(Collections.singletonList(common)));
+        assertEquals("Dropped by (2)", SectionSummaries.drops(Arrays.asList(rare, common)));
+        assertEquals("Dropped by (1)", SectionSummaries.drops(Collections.singletonList(common)));
+        assertEquals("Dropped by (0)", SectionSummaries.drops(Collections.emptyList()));
     }
 
     @Test

@@ -7,13 +7,29 @@ The plugin is written in Java 11 and built with Gradle. It does not add librarie
 ## Features
 
 - **Search and filters.** Type at least two characters. Filter by tradeable, members, equipable, and gear slot. Filters use the game cache, so they do not call the wiki. An empty or unmatched search says what was wrong instead of leaving a blank grid. Favourites and the last viewed items stay in the sidebar.
-- **Item detail pane.** Click a result to open the item. Sections start collapsed: Crafting, Shop sources, Dropped by, Used to craft, and equipment. Each header is one line with a count or a short summary. Drag the divider to give the detail pane more or less of the sidebar.
-- **Crafting tree and base materials.** A recipe shows the skill, level, facility, and experience. An ingredient that is itself crafted has an arrow. Rune essence, ores, logs, raw fish, herbs, shop stock, monster drops, and items gathered by Mining, Woodcutting, Fishing, Hunter, or Farming do not. One **Base materials** summary at the bottom lists what that recipe still needs.
-- **Monster drops.** Quantity and rate. A rate the wiki states as a fraction, a percentage, Always, or a range is shown as `1/X`. Words such as Rare stay as written. Sort by rate, combat level, or name. Open a monster for its locations.
-- **Shops.** Shop name, price, and stock. The name opens the wiki page. **Show on map** is offered when the page has coordinates.
+- **Item detail pane.** Click a result to open the item. Sections start collapsed: Crafting, Shop sources, Dropped by, Used to craft, and equipment. Each header is one line with a count or a short summary. The drop header is only the count, such as `Dropped by (168)`. Drag the divider to give the detail pane more or less of the sidebar.
+
+![Air rune in the sidebar, with collapsed sections](docs/images/item-detail.png)
+
+The shot above was taken before the drop header dropped the monster name. It now reads `Dropped by (168)` only.
+- **Crafting tree and base materials.** A recipe shows the skill, level, facility, and experience. An ingredient that is itself crafted has an arrow. Rune essence, ores, logs, raw fish, herbs, shop stock, monster drops, and items gathered by Mining, Woodcutting, Fishing, Hunter, or Farming do not. One **Base materials** summary at the bottom lists what that recipe still needs. A requirement you do not meet is marked on the recipe line.
+
+![Air rune crafting methods, including one unmet requirement](docs/images/crafting-runecraft.png)
+- **Monster drops.** Quantity and rate. A rate the wiki states as a fraction, a percentage, Always, or a range is shown as `1/X`. Words such as Rare stay as written. Sort by rate, combat level, or name. Each row has an arrow and says "Click for locations".
+
+![Dropped by list. Each row can be opened](docs/images/dropped-by.png)
+
+![A monster's locations, combat level, wiki link, and Show on map](docs/images/monster-locations.png)
+- **Shops.** Shop name, price, and stock. The name opens the wiki page. **Show on map** is offered when the page has coordinates. The collapsed header keeps the cheapest price, not a shop name.
+
+![Shop sources for an air rune, with prices and Show on map](docs/images/shop-sources.png)
 - **GE prices and high alch.** The guide price, the buy limit, and high alch stay visible. Instant sell, the post-tax margin, the 4-hour total, and alch profit sit under **Trading details**.
+
+![Trading details: instant sell, margin, the 4-hour total, and alch profit](docs/images/trading-details.png)
 - **Bank-aware have/need counts.** Inventory and worn gear count immediately. The bank is included only after you open it on that account. Until then the line says the bank has not been checked. It does not show 0 or a trailing plus.
 - **Map pins.** **Show on map** pins that shop or monster and does not open the map for you. The row then says to open the world map. Only the latest pin stays. **Map pin color** defaults to hot pink, **Pin size** defaults to Medium, and the outline stays dark. Switching items removes the pins unless **Clear pins on item switch** is off.
+
+![World map pins at Large pin size](docs/images/map-pins.png)
 - **Detail sections.** Each one starts collapsed. Under **Default open sections** you can start Trading details, Equipment, Shop sources, Used to craft, Dropped by, Crafting, or Locations open when you switch items. Opening Dropped by shows the monster list from the item page. A monster row has an arrow and says "Click for locations". That click is what loads the monster. Locations, if set to start open, only opens after that click. **Show high alch** hides the high alch row when it is off. **Right-click lookup** turns the menu entry on or off.
 - **Item Browser Lookup.** Right-click an item in your inventory, bank (including placeholders and the bank inventory), worn equipment, the equipment stats interface, or on the ground, and choose **Item Browser Lookup**. Noted, placeholder, and worn items open the real item. The entry does not send an action to the game.
 
@@ -27,11 +43,15 @@ Ironman mode can list shops, drops, and crafting before Grand Exchange info. Aut
 4. Click an item, or right-click an in-game item and choose **Item Browser Lookup**.
 5. Open a section header for the full list. Click an ingredient arrow for the next crafting step. Use **Show on map** when you want a pin, then open the world map yourself.
 
-In-game screenshots are not in this repository. Capture them from a logged-in client if you want them. Do not commit a stand-in image. `IN_GAME_TEST_CHECKLIST.md` is the click-through for a logged-in client.
+![Items an air rune is used to craft](docs/images/used-to-craft.png)
+
+`IN_GAME_TEST_CHECKLIST.md` is the click-through for a logged-in client.
 
 ## Configuration
 
 These are the names shown in the RuneLite config panel, under **OSRS Item Browser**. The group and the stored keys are unchanged, so saved settings keep working.
+
+![Plugin settings: search, prices, ironman, requirements, display, default open sections, map, and lookup](docs/images/settings.png)
 
 | Section | Setting | Default |
 | --- | --- | --- |
