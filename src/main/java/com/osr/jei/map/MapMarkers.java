@@ -219,7 +219,7 @@ public class MapMarkers {
         BufferedImage image = new BufferedImage(16, 16, BufferedImage.TYPE_INT_ARGB);
         Graphics2D g = image.createGraphics();
         g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-        g.setColor(new Color(220, 185, 75));
+        g.setColor(new Color(255, 105, 180));
         g.fillOval(2, 2, 12, 12);
         g.setColor(new Color(40, 30, 8));
         g.drawOval(2, 2, 12, 12);
