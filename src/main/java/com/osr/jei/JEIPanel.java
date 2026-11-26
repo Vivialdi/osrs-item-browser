@@ -3,6 +3,7 @@ package com.osr.jei;
 import com.osr.jei.crafting.BuildExpander;
 import com.osr.jei.crafting.RecipePages;
 import com.osr.jei.drops.DropMerger;
+import com.osr.jei.drops.DropSources;
 import com.osr.jei.drops.DropSort;
 import com.osr.jei.drops.DropSorter;
 import com.osr.jei.equipment.EquipmentCompare;
@@ -2588,9 +2589,13 @@ public class JEIPanel extends PluginPanel {
         if (dropsContent != null) {
             dropsContent.revalidate();
             dropsContent.validate();
+            // A wrapped line learns its width during the first pass and asks
+            // for a second layout. Without that pass the last line stays clipped.
+            dropsContent.validate();
             dropsContent.repaint();
         } else {
             block.revalidate();
+            block.validate();
             block.validate();
             block.repaint();
         }
@@ -2697,8 +2702,9 @@ public class JEIPanel extends PluginPanel {
             box.add(plainLabel("Combat " + info.combatLevel, "small", MUTED));
         }
         List<String> places = LocationNames.distinct(info == null ? null : info.locations);
+        DropEntry source = dropEntry(monsterName);
         if (places.isEmpty()) {
-            box.add(plainLabel("No locations are listed for this monster.", "small", MUTED));
+            box.add(plainLabel(DropSources.emptyLocations(source), "small", MUTED));
         } else {
             box.add(LocationLines.create(style, sectionState, places));
         }
@@ -2706,7 +2712,7 @@ public class JEIPanel extends PluginPanel {
         wiki.setForeground(LINK);
         wiki.addActionListener(e -> openWiki(monsterName));
         box.add(wiki);
-        if (info != null && info.mapped) {
+        if (DropSources.showMap(source, info != null && info.mapped, places.size())) {
             WrappingLabel map = ShopRows.mapLink(style);
             String monster = monsterName;
             map.addMouseListener(new java.awt.event.MouseAdapter() {
@@ -2769,6 +2775,15 @@ public class JEIPanel extends PluginPanel {
 
     private static String monsterKey(String name) {
         return name == null ? "" : name.trim().toLowerCase(Locale.ROOT);
+    }
+
+    private DropEntry dropEntry(String name) {
+        JPanel block = dropBlocks.get(monsterKey(name));
+        if (block == null || block.getComponentCount() == 0 || !(block.getComponent(0) instanceof JPanel)) {
+            return null;
+        }
+        Object entry = ((JPanel) block.getComponent(0)).getClientProperty("drop.entry");
+        return entry instanceof DropEntry ? (DropEntry) entry : null;
     }
 
     private void navigateTo(SearchItem target) {

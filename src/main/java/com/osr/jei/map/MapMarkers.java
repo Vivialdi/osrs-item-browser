@@ -36,6 +36,7 @@ public class MapMarkers {
     static final Color OUTLINE = new Color(40, 30, 8);
 
     private final List<WorldMapPoint> active = new ArrayList<>();
+    private final MapPinWatch mapWatch = new MapPinWatch();
     private Color pinColor = DEFAULT_PIN;
     private int pinEdge = PinSize.MEDIUM.pixels();
     private BufferedImage icon;
@@ -157,11 +158,38 @@ public class MapMarkers {
      * renderer is loaded, centres it on the pending pin. Does not open the map.
      */
     public void nudge() {
-        if (pending == null || !mapLoaded()) {
+        boolean open = mapLoaded();
+        if (mapWatch.onTick(open, !active.isEmpty())) {
+            restoreOnClient();
+        }
+        if (pending == null || !open) {
             return;
         }
         client.getWorldMap().setWorldMapPositionTarget(pending);
         pending = null;
+    }
+
+    /**
+     * The world map renderer is unloaded while the map is closed, and the next
+     * open starts at the player. Points this plugin still holds are added again
+     * and the map is aimed at the first one. Runs on the client thread.
+     */
+    private void restoreOnClient() {
+        if (points == null || active.isEmpty()) {
+            return;
+        }
+        List<WorldMapPoint> held = new ArrayList<>(active);
+        for (WorldMapPoint marker : held) {
+            points.removeIf(candidate -> candidate == marker);
+            if (marker != null) {
+                marker.setImage(icon);
+                points.add(marker);
+            }
+        }
+        WorldPoint first = held.get(0) == null ? null : held.get(0).getWorldPoint();
+        if (first != null) {
+            aim(first);
+        }
     }
 
     private void dropPins(int id) {

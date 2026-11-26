@@ -124,6 +124,7 @@ public final class DropMerger {
         DropEntry combined = new DropEntry();
         combined.setSource(first.getSource());
         combined.setLevel(first.getLevel() == null ? "" : first.getLevel().trim());
+        combined.setLevelKind(first.getLevelKind() == null ? "" : first.getLevelKind());
         combined.setQuantity(join(rated, true));
         combined.setRate(join(rated, false));
         combined.setRarity(first.getRarity() == null ? "" : first.getRarity());
@@ -166,10 +167,18 @@ public final class DropMerger {
 
     private static String levelText(DropEntry drop) {
         String level = drop.getLevel() == null ? "" : drop.getLevel().trim();
-        if (level.isEmpty() || "?".equals(level)) {
+        level = level.replace('\u2013', '-').replace('\u2014', '-').replace('\u2212', '-');
+        if (level.isEmpty() || "?".equals(level) || "n/a".equalsIgnoreCase(level)) {
             return "";
         }
-        return "Lv. " + level;
+        String kind = drop.getLevelKind() == null ? "" : drop.getLevelKind().trim().toLowerCase(Locale.ROOT);
+        if (kind.isEmpty() || "combat".equals(kind)) {
+            return "Lv. " + level;
+        }
+        if ("reward".equals(kind)) {
+            return "";
+        }
+        return Character.toUpperCase(kind.charAt(0)) + kind.substring(1) + " " + level;
     }
 
     private static String shownQuantity(String quantity) {
