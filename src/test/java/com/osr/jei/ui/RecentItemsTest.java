@@ -2,9 +2,12 @@ package com.osr.jei.ui;
 
 import org.junit.Test;
 
+import javax.swing.BorderFactory;
+import javax.swing.BoxLayout;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import java.awt.Cursor;
+import java.awt.Dimension;
 import java.awt.event.MouseEvent;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -28,6 +31,38 @@ public class RecentItemsTest {
         assertEquals(RecentLimit.THIRTY_SIX, RecentLimit.nearest(100));
         assertEquals(6, RecentLimit.values()[0].count());
         assertEquals(6, RecentLimit.EIGHTEEN.count() - RecentLimit.TWELVE.count());
+    }
+
+    @Test
+    public void hiddenRecentLeavesTheSavedListAlone() {
+        List<Integer> saved = new ArrayList<>(Arrays.asList(4, 5, 6));
+        List<Integer> before = new ArrayList<>(saved);
+        assertFalse(RecentItems.record(saved, 9, false, 12));
+        assertEquals(before, saved);
+        assertFalse(RecentItems.shows(false, true));
+        assertFalse(RecentItems.shows(true, false));
+        assertTrue(RecentItems.record(saved, 9, true, 12));
+        assertEquals(Arrays.asList(9, 4, 5, 6), saved);
+        assertTrue(RecentItems.shows(true, !saved.isEmpty()));
+    }
+
+    @Test
+    public void hiddenRecentRowTakesNoVerticalSpace() {
+        JPanel column = new JPanel();
+        column.setLayout(new BoxLayout(column, BoxLayout.Y_AXIS));
+        JPanel recent = new JPanel();
+        recent.setBorder(BorderFactory.createEmptyBorder(6, 0, 0, 0));
+        recent.add(new JLabel("Recent"));
+        recent.add(new JLabel("Clear"));
+        recent.setVisible(false);
+        JPanel below = new JPanel();
+        below.setPreferredSize(new Dimension(100, 20));
+        column.add(recent);
+        column.add(below);
+        column.setSize(200, 80);
+        column.doLayout();
+        assertEquals(20, column.getPreferredSize().height);
+        assertEquals(0, recent.getHeight());
     }
 
     @Test

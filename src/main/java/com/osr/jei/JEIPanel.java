@@ -436,6 +436,10 @@ public class JEIPanel extends PluginPanel {
             trimRecent(true);
             return;
         }
+        if ("showRecentItems".equals(key)) {
+            rebuildHistory();
+            return;
+        }
         if (isSearchFilterKey(key)) {
             syncFilterControls();
             refreshFilteredResults();
@@ -2815,11 +2819,15 @@ public class JEIPanel extends PluginPanel {
     }
 
     private void updateHistory(SearchItem item) {
-        recentIds.remove(Integer.valueOf(item.id));
-        recentIds.add(0, item.id);
-        trimRecent(false);
+        if (!RecentItems.record(recentIds, item.id, showRecent(), recentCap())) {
+            return;
+        }
         saveRecent();
         rebuildHistory();
+    }
+
+    private boolean showRecent() {
+        return config == null || config.showRecentItems();
     }
 
     private void clearRecent() {
@@ -2846,6 +2854,20 @@ public class JEIPanel extends PluginPanel {
             return;
         }
         historyIcons.removeAll();
+        if (!showRecent()) {
+            JLabel hiddenClear = RecentHeader.clear(headerOf(historyPanel));
+            if (hiddenClear != null) {
+                hiddenClear.setVisible(false);
+            }
+            historyPanel.setVisible(false);
+            historyPanel.revalidate();
+            if (historyPanel.getParent() != null) {
+                historyPanel.getParent().revalidate();
+            }
+            historyPanel.repaint();
+            rebuildFavourites();
+            return;
+        }
         boolean any = false;
         for (int id : recentIds) {
             SearchItem item = idIndex.get(id);
@@ -2855,12 +2877,16 @@ public class JEIPanel extends PluginPanel {
             any = true;
             historyIcons.add(buildHistoryCell(item));
         }
+        boolean show = RecentItems.shows(true, any);
         JLabel clear = RecentHeader.clear(headerOf(historyPanel));
         if (clear != null) {
-            clear.setVisible(any);
+            clear.setVisible(show);
         }
-        historyPanel.setVisible(any);
+        historyPanel.setVisible(show);
         historyPanel.revalidate();
+        if (historyPanel.getParent() != null) {
+            historyPanel.getParent().revalidate();
+        }
         historyPanel.repaint();
         rebuildFavourites();
     }

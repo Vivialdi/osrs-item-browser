@@ -17,6 +17,25 @@ public final class RecentItems {
         return limit == null ? RecentLimit.TWELVE.count() : limit.count();
     }
 
+    /** The Recent row is shown only while the setting is on and the list has entries. */
+    public static boolean shows(boolean enabled, boolean hasEntries) {
+        return enabled && hasEntries;
+    }
+
+    /**
+     * Adds {@code id} at the front when Recent is shown. When it is hidden the
+     * list is left as it is. Returns whether the list changed.
+     */
+    public static boolean record(List<Integer> newestFirst, int id, boolean enabled, int cap) {
+        if (!enabled || newestFirst == null) {
+            return false;
+        }
+        newestFirst.remove(Integer.valueOf(id));
+        newestFirst.add(0, id);
+        trim(newestFirst, cap);
+        return true;
+    }
+
     /** Drops the oldest entries past {@code cap}. Returns whether the list changed. */
     public static boolean trim(List<Integer> newestFirst, int cap) {
         if (newestFirst == null) {

@@ -276,6 +276,17 @@ public interface JEIConfig extends Config {
     }
 
     @ConfigItem(
+        keyName = "showRecentItems",
+        name = "Show recent items",
+        description = "Show Recent in the sidebar. Off hides that row and stops adding items. The saved list stays.",
+        section = "display",
+        position = 18
+    )
+    default boolean showRecentItems() {
+        return true;
+    }
+
+    @ConfigItem(
         keyName = "mapPinColor",
         name = "Map pin color",
         description = "Color of the world map pins this plugin places",

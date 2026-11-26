@@ -37,6 +37,7 @@ public class ConfigDefaultsTest {
         assertTrue(config.wrapText());
         assertEquals(RecentLimit.TWELVE, config.maxRecentItems());
         assertEquals(12, config.maxRecentItems().count());
+        assertTrue(config.showRecentItems());
 
         assertTrue(config.rightClickLookup());
         assertEquals(PinSize.MEDIUM, config.pinSize());
