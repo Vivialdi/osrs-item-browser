@@ -1,6 +1,6 @@
 # In-game test checklist
 
-Walk through this in a logged-in RuneLite client (`gradle run`, or a sideloaded build). Headless tests leave out menus, the bank, worn equipment, and the live config panel. Each step has the result you should see.
+Walk through this in a logged-in RuneLite client. Headless tests leave out menus, the bank, worn equipment, and the live config panel. Each step has the result you should see.
 
 Use a normal account first, then an ironman account for the ironman steps. Have one equipable item, one two-handed weapon, one shield, and one item with a recipe and a drop table (a rune platebody and an abyssal whip are enough).
 
@@ -93,7 +93,3 @@ Use a normal account first, then an ironman account for the ironman steps. Have 
    - Expected: the sidebar text updates immediately, including collapsed headers and an open drop list, and the lines reflow to the new font and width.
 33. Open Air rune, or any item with a long shop list, and do not click the section headers.
    - Expected: the detail pane shows the name, members, weight, owned count, GE buy / sell / margin / limit, and high alch. Shops, uses, drops, crafting, and equipment are one-line headers with a count or short summary. Clicking a header opens the rows already loaded from that item page.
-
-## After merge
-
-Plugin Hub submission waits until pull request #8 is on `master`. Follow `PLUGIN_HUB_SUBMISSION.md`. Do not replace `commit=REPLACE_WITH_MASTER_MERGE_COMMIT` until that merge commit exists, and do not open the hub pull request before then.

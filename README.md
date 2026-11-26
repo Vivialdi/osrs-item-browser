@@ -44,6 +44,7 @@ Monster locations, combat level, wiki link, and Show on map
 </table>
 
 - **Shops.** Shop name, price, and stock. The name opens the wiki page. **Show on map** is offered when the page has coordinates. The collapsed header includes the cheapest price.
+- **Used to craft.** Lists items that use the open item as an ingredient, each as its own product. Iron dagger shows Iron dagger(p), Iron dagger(p+), and Iron dagger(p++). The Crafting section shows the recipes that produce the open item.
 
 <table>
 <tr>
@@ -78,7 +79,7 @@ Ironman mode can list shops, drops, and crafting before Grand Exchange info. Aut
 
 ## How to use
 
-1. Enable **OSRS Item Browser** from the Plugin Hub after it is published. Until it is published, run it from this repo with the command in Building.
+1. Enable **OSRS Item Browser** from the Plugin Hub.
 2. Open the sidebar. The button tooltip is **OSRS Item Browser**.
 3. Type in the search box and set any filters. Results are icons.
 4. Click an item, or right-click an in-game item and choose **Item Browser Lookup**.
@@ -164,7 +165,7 @@ Java 11. From the repository root:
 gradle test
 ```
 
-`gradle run` starts a developer client. CI on pull requests runs `gradle test` on Temurin 11. Compile uses `-Xlint:deprecation`.
+`gradle run` starts a client. Compile uses `-Xlint:deprecation`.
 
 ## Credits
 
