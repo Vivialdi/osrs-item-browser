@@ -1,6 +1,6 @@
 # Plugin Hub submission
 
-Submit this plugin to [runelite/plugin-hub](https://github.com/runelite/plugin-hub) only after pull request #8 is merged to `master`. Do not open, fork, or push that hub repository from an automated agent. A person creates the fork and the hub pull request.
+Submit this plugin to [runelite/plugin-hub](https://github.com/runelite/plugin-hub) after pull request #8 is merged to `master`. Fork the hub repository in your own account and open the hub pull request from that fork.
 
 The hub descriptor below is ready to copy. Leave `commit=REPLACE_WITH_MASTER_MERGE_COMMIT` in this file until `master` has the merge. The hub pull request must use the real 40-character hash, not the placeholder.
 
@@ -24,9 +24,9 @@ commit=REPLACE_WITH_MASTER_MERGE_COMMIT
 5. Commit, push the branch to your fork, and open a pull request against `runelite/plugin-hub` `master`. Describe the plugin in the pull request body.
 6. Read the hub CI log (`build`, and Plugin Hub Checks if it asks for changes). If it fails, fix the plugin in this repository, merge that fix to `master`, and update `commit=` on the hub pull request to the new `master` hash.
 
-## What was already checked locally
+## Packager
 
-A local run of the plugin-hub v6 packager, against this repository, built the jar with `build=standard`, recorded the API surface, and accepted the icon and `runelite-plugin.properties`. `verifyCore` in `package/verification-template` passed. The signing upload (`upload.jar` with `SIGNING_KEY`) cannot be run without the hub's secrets. Re-run is not required before the steps above unless the `master` commit differs from the commit that was packaged.
+The hub CI runs the packager with `build=standard` and `verifyCore` in `package/verification-template`. The signing upload (`upload.jar` with `SIGNING_KEY`) needs the hub's secrets. If `master` moves after a local packager run, run the packager again on the new commit before updating `commit=`.
 
 ## Audit
 
@@ -35,5 +35,5 @@ A local run of the plugin-hub v6 packager, against this repository, built the ja
 - `LICENSE` is BSD 2-Clause, copyright Vivialdi.
 - `icon.png` at the repository root is 48x48, inside the 48x72 and 256 KiB limits.
 - The hub standard build replaces `build.gradle` and `settings.gradle`. This repo adds no third-party dependency. Java 11, Lombok, and JUnit are the local toolchain. Compile uses `-Xlint:deprecation`.
-- Config group `osrjei` and its keys are unchanged. **GE prices** is the toggle that warns it sends your IP to a third-party server. Owned counts and the bank-seen flag do not send a request.
-- The right-click entry is **Item Browser Lookup** (`MenuAction.RUNELITE` only). **Show on map** does not call `menuAction`.
+- Config group is `osrjei`. **GE prices** is the toggle that warns it sends your IP to a third-party server. Owned counts and the bank-seen flag stay on the client.
+- The right-click entry is **Item Browser Lookup** (`MenuAction.RUNELITE`). **Show on map** updates the world-map pins.
