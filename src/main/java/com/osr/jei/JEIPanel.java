@@ -53,6 +53,7 @@ import com.osr.jei.ui.RecipeTreeView;
 import com.osr.jei.ui.ShopRows;
 import com.osr.jei.ui.StarButton;
 import com.osr.jei.ui.ScrollWidthPanel;
+import com.osr.jei.ui.SearchResultsView;
 import com.osr.jei.ui.SectionState;
 import com.osr.jei.ui.ResultsHeading;
 import com.osr.jei.ui.SectionSummaries;
@@ -205,6 +206,7 @@ public class JEIPanel extends PluginPanel {
     private ScheduledFuture<?> pendingDetail;
 
     private JSplitPane split;
+    private SearchResultsView resultsView;
     private IconGridPanel gridPanel;
     private JScrollPane gridScroll;
     private boolean resultsOpen;
@@ -740,9 +742,9 @@ public class JEIPanel extends PluginPanel {
     }
 
     private JComponent buildContent() {
-        gridPanel = new IconGridPanel(36, 4);
-        gridPanel.setBackground(ColorScheme.DARKER_GRAY_COLOR);
-        gridScroll = scroll(gridPanel);
+        resultsView = new SearchResultsView(style, 36, 4);
+        gridPanel = resultsView.grid();
+        gridScroll = scroll(resultsView);
         gridScroll.setMinimumSize(new Dimension(0, 0));
         gridScroll.setVisible(false);
 
@@ -1052,6 +1054,7 @@ public class JEIPanel extends PluginPanel {
             gridPanel.removeAll();
             selectedCell = null;
             lastGridItems = Collections.emptyList();
+            resultsView.hideMessage();
             gridPanel.revalidate();
             gridPanel.repaint();
             showResultGrid(false);
@@ -1083,18 +1086,15 @@ public class JEIPanel extends PluginPanel {
         gridPanel.removeAll();
         selectedCell = null;
         if (items.isEmpty()) {
-            String text;
-            if (!indexPopulated) {
-                text = "The item list is still loading.";
-            } else {
-                text = "No items match that search.";
+            String text = indexPopulated
+                ? SearchResultsView.NO_MATCH
+                : SearchResultsView.STILL_LOADING;
+            resultsView.showMessage(text);
+        } else {
+            resultsView.hideMessage();
+            for (SearchItem item : items) {
+                gridPanel.add(buildItemCell(item));
             }
-            JLabel empty = plainLabel(text, "small", MUTED);
-            empty.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
-            gridPanel.add(empty);
-        }
-        for (SearchItem item : items) {
-            gridPanel.add(buildItemCell(item));
         }
         gridPanel.revalidate();
         gridPanel.repaint();
@@ -1116,7 +1116,11 @@ public class JEIPanel extends PluginPanel {
         resultsOpen = show;
         gridScroll.setVisible(show);
         if (show) {
-            gridScroll.setMinimumSize(new Dimension(0, 72));
+            int minHeight = 72;
+            if (resultsView.emptyLabel().isVisible()) {
+                minHeight = Math.max(minHeight, resultsView.emptyLabel().getPreferredSize().height);
+            }
+            gridScroll.setMinimumSize(new Dimension(0, minHeight));
             split.setDividerSize(6);
             applyResizeWeight();
             if (split.getHeight() > 0) {
