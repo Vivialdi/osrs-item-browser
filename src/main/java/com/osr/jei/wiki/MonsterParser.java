@@ -24,7 +24,8 @@ public final class MonsterParser {
         if (locations.isEmpty() && combat == 0) {
             return Optional.empty();
         }
-        return Optional.of(new MonsterInfo(monsterName, combat, locations));
+        boolean mapped = !MapPins.parse(wikitext).isEmpty();
+        return Optional.of(new MonsterInfo(monsterName, combat, locations, mapped));
     }
 
     static int parseCombatLevel(String wikitext) {
@@ -48,7 +49,7 @@ public final class MonsterParser {
                 continue;
             }
             Map<String, String> params = WikiText.parseParams(block);
-            String location = WikiText.clean(params.getOrDefault("location", ""));
+            String location = LocationNames.clean(params.getOrDefault("location", ""));
             if (!location.isEmpty()
                 && !location.equalsIgnoreCase("none")
                 && !location.equalsIgnoreCase("n/a")) {

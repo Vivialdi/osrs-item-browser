@@ -4,6 +4,7 @@ import com.google.inject.Provides;
 import com.osr.jei.equipment.WornGear;
 import com.osr.jei.ironman.IronmanAccounts;
 import com.osr.jei.lookup.CanonicalIds;
+import com.osr.jei.map.MapMarkers;
 import com.osr.jei.lookup.LookupTargets;
 import com.osr.jei.owned.OwnedItems;
 import com.osr.jei.requirements.PlayerProgress;
@@ -39,8 +40,8 @@ import net.runelite.client.ui.NavigationButton;
 
 import javax.inject.Inject;
 import javax.swing.SwingUtilities;
+import java.awt.BasicStroke;
 import java.awt.Color;
-import java.awt.Font;
 import java.awt.Graphics2D;
 import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
@@ -51,13 +52,13 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Sidebar item browser. Right-click an inventory, bank, worn, or ground item and choose JEI Lookup.
+ * Sidebar item browser. Right-click an inventory, bank, worn, or ground item and choose Item Browser Lookup.
  */
 @Slf4j
 @PluginDescriptor(
     name = "OSRS Item Browser",
     description = "Browse items, drop tables, shop prices, and sources",
-    tags = {"item", "drops", "wiki", "browser", "search", "jei"}
+    tags = {"item", "drops", "wiki", "browser", "search", "recipe"}
 )
 public class JEIPlugin extends Plugin {
 
@@ -67,7 +68,12 @@ public class JEIPlugin extends Plugin {
     @Inject private ItemManager itemManager;
     @Inject private JEIConfig config;
     @Inject private JEIPanel panel;
+    @Inject private MapMarkers mapMarkers;
     @Inject private PlayerProgress progress;
+    @Inject private ConfigManager configManager;
+
+    /** Set only after InventoryID.BANK has changed, or a saved per-account flag and a loaded container. */
+    private boolean bankSeen;
 
     private NavigationButton navButton;
     private boolean ironmanActive;
@@ -142,13 +148,15 @@ public class JEIPlugin extends Plugin {
     public void onGameTick(GameTick event) {
         if (!panel.isClosed()) {
             progress.readQuestsIfDirty();
+            panel.nudgeMap();
         }
     }
 
     /**
      * Inventory, worn equipment, and bank. Read on the client thread and
      * forwarded only when the canonical totals actually change. The bank
-     * container is null until it has been opened this session.
+     * counts only after that container has changed, not merely because an
+     * empty container object exists.
      */
     @Subscribe
     public void onItemContainerChanged(ItemContainerChanged event) {
@@ -158,6 +166,9 @@ public class JEIPlugin extends Plugin {
         int containerId = event.getContainerId();
         if (containerId != InventoryID.INV && containerId != InventoryID.BANK && containerId != InventoryID.WORN) {
             return;
+        }
+        if (containerId == InventoryID.BANK) {
+            rememberBank();
         }
         publishOwned();
         if (containerId == InventoryID.WORN) {
@@ -172,6 +183,7 @@ public class JEIPlugin extends Plugin {
      */
     @Subscribe
     public void onAccountHashChanged(AccountHashChanged event) {
+        bankSeen = false;
         if (!panel.isClosed()) {
             publishIronman();
             publishOwned();
@@ -215,6 +227,15 @@ public class JEIPlugin extends Plugin {
         String key = event.getKey();
         if ("ironmanMode".equals(key)) {
             clientThread.invokeLater(this::publishIronman);
+            return;
+        }
+        if ("mapPinColor".equals(key) || "pinSize".equals(key)) {
+            if (mapMarkers != null) {
+                mapMarkers.applyAppearance(config.mapPinColor(), config.pinSize());
+            }
+            return;
+        }
+        if ("rightClickLookup".equals(key) || "clearPinsOnSwitch".equals(key)) {
             return;
         }
         SwingUtilities.invokeLater(() -> panel.onConfigChanged(key));
@@ -282,12 +303,47 @@ public class JEIPlugin extends Plugin {
                 readContainer(worn),
                 readContainer(bank),
                 inventory != null,
-                bank != null
+                bankHasBeenSeen()
             );
         } catch (RuntimeException ex) {
             log.debug("Could not read item containers: {}", ex.getMessage());
             return OwnedItems.Snapshot.NONE;
         }
+    }
+
+    private void rememberBank() {
+        bankSeen = true;
+        if (configManager == null) {
+            return;
+        }
+        try {
+            configManager.setRSProfileConfiguration("osrjei", "bankSeen", Boolean.TRUE);
+        } catch (RuntimeException ex) {
+            log.debug("Could not remember that the bank was opened: {}", ex.getMessage());
+        }
+    }
+
+    /**
+     * A non-null bank container is not enough: the client can hold an empty
+     * one before the player opens the bank. The flag is per account.
+     */
+    private boolean bankHasBeenSeen() {
+        if (bankSeen) {
+            return true;
+        }
+        if (configManager == null || client.getItemContainer(InventoryID.BANK) == null) {
+            return false;
+        }
+        try {
+            Boolean saved = configManager.getRSProfileConfiguration("osrjei", "bankSeen", Boolean.class);
+            if (Boolean.TRUE.equals(saved)) {
+                bankSeen = true;
+                return true;
+            }
+        } catch (RuntimeException ex) {
+            log.debug("Could not read the saved bank flag: {}", ex.getMessage());
+        }
+        return false;
     }
 
     private Map<Integer, Long> readContainer(ItemContainer container) {
@@ -373,12 +429,15 @@ public class JEIPlugin extends Plugin {
     }
 
     /**
-     * Adds one JEI Lookup entry on ground items and on Examine for inventory,
+     * Adds one Item Browser Lookup entry on ground items and on Examine for inventory,
      * bank (including placeholders and the bank side inventory), worn equipment,
      * and the equipment stats interface.
      */
     @Subscribe
     public void onMenuEntryAdded(MenuEntryAdded event) {
+        if (config != null && !config.rightClickLookup()) {
+            return;
+        }
         if (client.getMenu() == null || panel.isClosed()) {
             return;
         }
@@ -391,7 +450,7 @@ public class JEIPlugin extends Plugin {
         }
         final int lookupId = itemId;
         client.getMenu().createMenuEntry(-1)
-            .setOption("<col=ff9040>JEI</col> Lookup")
+            .setOption(LookupTargets.MENU_OPTION)
             .setTarget(event.getTarget())
             .setType(MenuAction.RUNELITE)
             .setDeprioritized(true)
@@ -486,13 +545,18 @@ public class JEIPlugin extends Plugin {
         BufferedImage img = new BufferedImage(16, 16, BufferedImage.TYPE_INT_ARGB);
         Graphics2D g = img.createGraphics();
         g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-        g.setColor(new Color(200, 160, 50));
-        g.fillRoundRect(0, 0, 15, 15, 4, 4);
-        g.setColor(new Color(80, 60, 10));
-        g.drawRoundRect(0, 0, 15, 15, 4, 4);
-        g.setColor(Color.BLACK);
-        g.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 7));
-        g.drawString("JEI", 2, 11);
+        g.setStroke(new BasicStroke(2.6f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        g.setColor(new Color(40, 30, 8));
+        g.drawOval(1, 1, 9, 9);
+        g.setStroke(new BasicStroke(1.5f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        g.setColor(new Color(230, 200, 90));
+        g.drawOval(1, 1, 9, 9);
+        g.setStroke(new BasicStroke(2.8f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        g.setColor(new Color(50, 30, 10));
+        g.drawLine(9, 9, 14, 14);
+        g.setStroke(new BasicStroke(1.6f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        g.setColor(new Color(120, 80, 35));
+        g.drawLine(9, 9, 14, 14);
         g.dispose();
         return img;
     }

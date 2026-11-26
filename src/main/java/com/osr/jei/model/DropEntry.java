@@ -8,8 +8,10 @@ import lombok.Data;
  */
 @Data
 public class DropEntry {
-    private String source;    // Monster or NPC name
-    private String level;     // Combat level, e.g. "50" or "2-13"
+    private String source;    // Monster, skill source, or reward name
+    private String level;     // Combat level, skill level, or blank
+    /** Wiki level marker: combat, sailing, hunter, thieving, reward, or blank. */
+    private String levelKind;
     private String quantity;  // e.g. "1" or "1-5"
     private String rate;      // e.g. "1/512"
     private String rarity;    // "Always", "Common", "Uncommon", "Rare", "Very rare"

@@ -13,6 +13,7 @@ import java.awt.Font;
 public final class UiStyle {
 
     public static final String ROLE = "jei.font";
+    public static final String WRAP = "jei.wrap";
 
     public final Font title;
     public final Font body;
@@ -20,14 +21,24 @@ public final class UiStyle {
     public final Font small;
     public final Font price;
     public final Font button;
+    public final boolean wrap;
 
     public UiStyle(Font title, Font body, Font bodyBold, Font small, Font price, Font button) {
+        this(title, body, bodyBold, small, price, button, true);
+    }
+
+    public UiStyle(Font title, Font body, Font bodyBold, Font small, Font price, Font button, boolean wrap) {
         this.title = title;
         this.body = body;
         this.bodyBold = bodyBold;
         this.small = small;
         this.price = price;
         this.button = button;
+        this.wrap = wrap;
+    }
+
+    public UiStyle withWrap(boolean wrap) {
+        return new UiStyle(title, body, bodyBold, small, price, button, wrap);
     }
 
     public static UiStyle from(int fontSize, FontStyleChoice styleChoice, FontFamilyChoice familyChoice) {
@@ -67,13 +78,16 @@ public final class UiStyle {
 
     public void apply(JComponent component, String role) {
         component.putClientProperty(ROLE, role);
+        component.putClientProperty(WRAP, wrap);
         component.setFont(forRole(role));
     }
 
     public void applyTree(java.awt.Component root) {
         if (root instanceof JComponent) {
-            Object role = ((JComponent) root).getClientProperty(ROLE);
+            JComponent component = (JComponent) root;
+            Object role = component.getClientProperty(ROLE);
             if (role instanceof String) {
+                component.putClientProperty(WRAP, wrap);
                 root.setFont(forRole((String) role));
             }
         }

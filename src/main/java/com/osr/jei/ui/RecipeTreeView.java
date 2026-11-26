@@ -20,6 +20,8 @@ import java.awt.Cursor;
 import java.awt.Dimension;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -93,52 +95,111 @@ public final class RecipeTreeView {
         Counts counts,
         Marks marks
     ) {
+        fill(body, style, result, anyOpen, actions, counts, marks, true);
+    }
+
+    public static void fill(
+        JPanel body,
+        UiStyle style,
+        BuildExpander.Result result,
+        boolean anyOpen,
+        Actions actions,
+        Counts counts,
+        Marks marks,
+        boolean includeHeader
+    ) {
         body.removeAll();
         boolean ingredients = hasIngredients(result);
-        JLabel header = label(style, ingredients
-            ? "Crafting / Build path"
-            : (result.recipes.size() == 1 ? "Crafting recipe" : "Crafting recipes"), "bodyBold", Color.WHITE);
-        body.add(header);
-        if (ingredients) {
-            JButton expand = button(style, "Expand tree", "button");
-            expand.setForeground(LINK);
-            expand.addActionListener(e -> actions.expandAll());
-            body.add(expand);
-            if (anyOpen) {
-                JButton collapse = button(style, "Collapse tree", "button");
-                collapse.setForeground(LINK);
-                collapse.addActionListener(e -> actions.collapseAll());
-                body.add(collapse);
-            }
+        if (includeHeader) {
+            JLabel header = label(style, ingredients
+                ? "Crafting / Build path"
+                : (result.recipes.size() == 1 ? "Crafting recipe" : "Crafting recipes"), "bodyBold", Color.WHITE);
+            body.add(header);
         }
         body.add(Box.createRigidArea(new Dimension(0, 3)));
+        BuildExpander.RecipeBranch summaryBranch = summaryBranch(result);
         for (int i = 0; i < result.recipes.size(); i++) {
             if (i > 0) {
                 body.add(Box.createRigidArea(new Dimension(0, 8)));
             }
             BuildExpander.RecipeBranch branch = result.recipes.get(i);
             Mark mark = markOf(marks, branch.recipe);
-            String summary = RecipeText.summary(branch.recipe);
+            String summary = RecipeText.withLoopedIngredients(
+                RecipeText.summary(branch.recipe), loopedNames(branch.ingredients));
             if (!summary.isEmpty()) {
                 body.add(html(style, RequirementJudge.htmlPrefix(mark) + escape(summary), "small", mark == Mark.UNMET ? UNMET : GOOD));
             }
             for (BuildExpander.BuildNode ingredient : branch.ingredients) {
-                addNode(body, style, ingredient, actions, counts, marks, mark == Mark.UNMET);
-            }
-            if (!branch.baseMaterials.isEmpty()) {
-                body.add(Box.createRigidArea(new Dimension(0, 4)));
-                String materials = "Base materials";
-                if (counts != null && counts.show() && counts.inventoryKnown() && !counts.bankKnown()) {
-                    materials = "Base materials \u00b7 bank not opened";
-                }
-                body.add(label(style, materials, "bodyBold", ColorScheme.LIGHT_GRAY_COLOR));
-                for (Map.Entry<String, Long> material : branch.baseMaterials.entrySet()) {
-                    String line = "\u00b7 " + escape(quantityText(material.getKey(), material.getValue()));
-                    line = line + ownedSuffix(counts, material.getKey(), material.getValue(), true);
-                    body.add(html(style, line, "small", MUTED));
+                if (!ingredient.cycle) {
+                    addNode(body, style, ingredient, actions, counts, marks, mark == Mark.UNMET);
                 }
             }
         }
+        addBaseMaterials(body, style, summaryBranch, counts);
+    }
+
+    /** One summary: the expanded recipe if there is one, otherwise the first. */
+    private static BuildExpander.RecipeBranch summaryBranch(BuildExpander.Result result) {
+        BuildExpander.RecipeBranch first = null;
+        if (result == null || result.recipes == null) {
+            return null;
+        }
+        for (BuildExpander.RecipeBranch branch : result.recipes) {
+            if (first == null) {
+                first = branch;
+            }
+            if (branchExpanded(branch)) {
+                return branch;
+            }
+        }
+        return first;
+    }
+
+    private static boolean branchExpanded(BuildExpander.RecipeBranch branch) {
+        if (branch == null || branch.ingredients == null) {
+            return false;
+        }
+        for (BuildExpander.BuildNode ingredient : branch.ingredients) {
+            if (ingredient.expanded || ingredient.loading || !ingredient.children.isEmpty()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static void addBaseMaterials(
+        JPanel body,
+        UiStyle style,
+        BuildExpander.RecipeBranch branch,
+        Counts counts
+    ) {
+        if (branch == null || branch.baseMaterials == null || branch.baseMaterials.isEmpty()) {
+            return;
+        }
+        body.add(Box.createRigidArea(new Dimension(0, 6)));
+        boolean bankUnknown = counts != null && counts.show() && counts.inventoryKnown() && !counts.bankKnown();
+        String materials = bankUnknown ? "Base materials (bank not checked)" : "Base materials";
+        body.add(label(style, materials, "bodyBold", ColorScheme.LIGHT_GRAY_COLOR));
+        for (Map.Entry<String, Long> material : branch.baseMaterials.entrySet()) {
+            String line = "\u00b7 " + escape(quantityText(material.getKey(), material.getValue()));
+            if (!bankUnknown) {
+                line = line + ownedSuffix(counts, material.getKey(), material.getValue(), true);
+            }
+            body.add(html(style, line, "small", MUTED));
+        }
+    }
+
+    private static List<String> loopedNames(List<BuildExpander.BuildNode> nodes) {
+        List<String> names = new ArrayList<>();
+        if (nodes == null) {
+            return names;
+        }
+        for (BuildExpander.BuildNode node : nodes) {
+            if (node != null && node.cycle && node.name != null && !node.name.isEmpty()) {
+                names.add(node.name);
+            }
+        }
+        return names;
     }
 
     private static boolean hasIngredients(BuildExpander.Result result) {
@@ -174,12 +235,15 @@ public final class RecipeTreeView {
         }
         block.add(row(style, node, actions, counts, parentUnmet));
         Mark childMark = Mark.NEUTRAL;
+        List<String> loopedChildren = loopedNames(node.children);
         if (node.expanded && node.recipe != null) {
             childMark = markOf(marks, node.recipe);
-            String summary = RecipeText.summary(node.recipe);
+            String summary = RecipeText.withLoopedIngredients(RecipeText.summary(node.recipe), loopedChildren);
             if (!summary.isEmpty()) {
                 block.add(html(style, RequirementJudge.htmlPrefix(childMark) + escape(summary), "small", childMark == Mark.UNMET ? UNMET : GOOD));
             }
+        } else if (node.expanded && !loopedChildren.isEmpty()) {
+            block.add(html(style, escape(RecipeText.withLoopedIngredients("", loopedChildren)), "small", MUTED));
         }
         if (node.loading) {
             block.add(label(style, "Loading recipe\u2026", "small", MUTED));
@@ -192,7 +256,9 @@ public final class RecipeTreeView {
         }
         boolean unmetHere = parentUnmet || childMark == Mark.UNMET;
         for (BuildExpander.BuildNode child : node.children) {
-            addNode(block, style, child, actions, counts, marks, unmetHere);
+            if (!child.cycle) {
+                addNode(block, style, child, actions, counts, marks, unmetHere);
+            }
         }
         parent.add(block);
     }
@@ -204,11 +270,22 @@ public final class RecipeTreeView {
                 Dimension preferred = getPreferredSize();
                 return new Dimension(Integer.MAX_VALUE, preferred.height);
             }
+
+            @Override
+            public Dimension getMinimumSize() {
+                Dimension preferred = getPreferredSize();
+                return new Dimension(0, preferred.height);
+            }
         };
         row.setBackground(ColorScheme.DARKER_GRAY_COLOR);
         row.setAlignmentX(0f);
-        boolean showToggle = !node.cycle && !node.capped && !(node.expanded && !node.loading && node.children.isEmpty() && node.recipe == null);
-        if (showToggle) {
+        JPanel toggleSlot = new JPanel(new BorderLayout());
+        toggleSlot.setOpaque(false);
+        toggleSlot.setPreferredSize(new Dimension(18, 18));
+        toggleSlot.setMinimumSize(new Dimension(18, 18));
+        toggleSlot.setMaximumSize(new Dimension(18, 18));
+        toggleSlot.putClientProperty("jei.role", "tree-toggle");
+        if (node.showExpander) {
             JButton toggle = button(style, node.expanded ? "\u25be" : "\u25b8", "small");
             toggle.setForeground(LINK);
             toggle.setMargin(new java.awt.Insets(0, 0, 0, 0));
@@ -216,19 +293,75 @@ public final class RecipeTreeView {
             String itemName = node.name;
             toggle.addActionListener(e -> actions.toggle(path, itemName));
             toggle.setPreferredSize(new Dimension(18, 18));
-            row.add(toggle, BorderLayout.WEST);
+            toggle.setMaximumSize(new Dimension(18, 18));
+            toggleSlot.add(toggle, BorderLayout.NORTH);
         }
-        JLabel icon = new JLabel();
-        icon.setPreferredSize(new Dimension(22, 22));
+        row.add(toggleSlot, BorderLayout.WEST);
+        JLabel icon = new JLabel() {
+            @Override
+            public Dimension getPreferredSize() {
+                return iconSize(this);
+            }
+
+            @Override
+            public Dimension getMinimumSize() {
+                return iconSize(this);
+            }
+
+            @Override
+            public void setIcon(javax.swing.Icon image) {
+                super.setIcon(image);
+                if (getParent() != null) {
+                    getParent().revalidate();
+                }
+            }
+        };
+        icon.putClientProperty("jei.role", "tree-icon");
+        icon.setVerticalAlignment(javax.swing.SwingConstants.TOP);
+        icon.setHorizontalAlignment(javax.swing.SwingConstants.CENTER);
+        icon.setAlignmentY(0f);
         actions.icon(icon, node.name);
         boolean open = actions.canOpen(node.name);
         String text = quantityText(node.name, node.quantity);
-        if (node.cycle) {
-            text = text + " (loop)";
-        }
-        String htmlText = escape(text) + ownedSuffix(counts, node.name, node.quantity, false);
         Color nameColor = unmet ? UNMET : (open ? LINK : ColorScheme.LIGHT_GRAY_COLOR);
-        WrappingLabel name = html(style, htmlText, "small", nameColor);
+        String suffix = "";
+        Color suffixColor = nameColor;
+        if (counts != null && counts.show() && counts.inventoryKnown()) {
+            Long have = counts.have(node.name);
+            if (have != null) {
+                suffix = OwnedText.haveNeedPlain(have.longValue(), node.quantity, counts.bankKnown());
+                suffixColor = OwnedText.haveNeedColor(have.longValue(), node.quantity, counts.bankKnown());
+            }
+        }
+        JPanel lines = new JPanel() {
+            @Override
+            public Dimension getMaximumSize() {
+                Dimension preferred = getPreferredSize();
+                return new Dimension(Integer.MAX_VALUE, preferred.height);
+            }
+
+            @Override
+            public Dimension getMinimumSize() {
+                Dimension preferred = getPreferredSize();
+                return new Dimension(0, preferred.height);
+            }
+        };
+        lines.setLayout(new BoxLayout(lines, BoxLayout.Y_AXIS));
+        lines.setOpaque(false);
+        lines.setAlignmentX(0f);
+        WrappingLabel name = html(style, escape(text), "small", nameColor);
+        String tip = suffix.isEmpty() ? text : text + " \u00b7 " + suffix;
+        if (counts != null && counts.show() && counts.inventoryKnown() && !counts.bankKnown()) {
+            tip = tip + " \u00b7 " + OwnedText.BANK_UNKNOWN_TIP;
+        }
+        name.setToolTipText(tip);
+        lines.add(name);
+        WrappingLabel have = null;
+        if (!suffix.isEmpty()) {
+            have = html(style, escape(suffix), "small", suffixColor);
+            have.setToolTipText(tip);
+            lines.add(have);
+        }
         if (open) {
             String itemName = node.name;
             MouseAdapter opener = new MouseAdapter() {
@@ -241,14 +374,42 @@ public final class RecipeTreeView {
             icon.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
             name.addMouseListener(opener);
             icon.addMouseListener(opener);
+            if (have != null) {
+                have.setCursor(name.getCursor());
+                have.addMouseListener(opener);
+            }
         }
-        JPanel center = new JPanel(new BorderLayout(4, 0));
+        JPanel center = new JPanel(new BorderLayout(4, 0)) {
+            @Override
+            public Dimension getMaximumSize() {
+                Dimension preferred = getPreferredSize();
+                return new Dimension(Integer.MAX_VALUE, preferred.height);
+            }
+
+            @Override
+            public Dimension getMinimumSize() {
+                Dimension preferred = getPreferredSize();
+                return new Dimension(0, preferred.height);
+            }
+        };
         center.setOpaque(false);
         center.setAlignmentX(0f);
         center.add(icon, BorderLayout.WEST);
-        center.add(name, BorderLayout.CENTER);
+        center.add(lines, BorderLayout.CENTER);
         row.add(center, BorderLayout.CENTER);
         return row;
+    }
+
+    /** Inventory sprites are about 32–36px. The cell must not be shorter than the image. */
+    static Dimension iconSize(JLabel icon) {
+        int width = 36;
+        int height = 36;
+        javax.swing.Icon image = icon.getIcon();
+        if (image != null) {
+            width = Math.max(width, image.getIconWidth());
+            height = Math.max(height, image.getIconHeight());
+        }
+        return new Dimension(width, height);
     }
 
     private static String ownedSuffix(Counts counts, String itemName, long need, boolean baseMaterial) {
@@ -259,7 +420,8 @@ public final class RecipeTreeView {
         if (have == null) {
             return "";
         }
-        String fragment = baseMaterial
+        boolean shortfall = com.osr.jei.owned.OwnedItems.stillNeeded(have, need) > 0L;
+        String fragment = baseMaterial && shortfall
             ? OwnedText.stillNeededHtml(have, need, counts.bankKnown())
             : OwnedText.haveNeedHtml(have, need, counts.bankKnown());
         return " \u00b7 " + fragment;
@@ -287,9 +449,11 @@ public final class RecipeTreeView {
     }
 
     private static JLabel label(UiStyle style, String text, String role, Color color) {
-        JLabel label = new JLabel(text);
+        WrappingLabel label = new WrappingLabel();
         style.apply(label, role);
         label.setForeground(color);
+        label.setHtml(escape(text));
+        label.setToolTipText(text);
         label.setAlignmentX(0f);
         return label;
     }
@@ -304,7 +468,7 @@ public final class RecipeTreeView {
     }
 
     private static JButton button(UiStyle style, String text, String role) {
-        JButton button = new JButton(text);
+        JButton button = new WrappingButton(text);
         style.apply(button, role);
         button.setBackground(ColorScheme.DARKER_GRAY_COLOR);
         button.setOpaque(false);

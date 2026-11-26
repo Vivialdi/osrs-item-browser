@@ -1,34 +1,39 @@
 # Plugin Hub submission
 
-This file prepares a submission to [runelite/plugin-hub](https://github.com/runelite/plugin-hub). Do not open that pull request from here. Create it yourself from a fork, after the commit below is the one you want published.
+Submit this plugin to [runelite/plugin-hub](https://github.com/runelite/plugin-hub) after pull request #8 is merged to `master`. Fork the hub repository in your own account and open the hub pull request from that fork.
+
+The hub descriptor below is ready to copy. Leave `commit=REPLACE_WITH_MASTER_MERGE_COMMIT` in this file until `master` has the merge. The hub pull request must use the real 40-character hash, not the placeholder.
 
 ## `plugins/osrs-item-browser`
 
-Create `plugins/osrs-item-browser` in the plugin-hub fork with exactly these two lines:
+Create a file named `plugins/osrs-item-browser` (no extension) containing exactly these two lines:
 
 ```
 repository=https://github.com/Vivialdi/osrs-item-browser.git
 commit=REPLACE_WITH_MASTER_MERGE_COMMIT
 ```
 
-`commit` is the full 40-character hash of the `master` commit to publish. Replace `REPLACE_WITH_MASTER_MERGE_COMMIT` after this repository's pull request is merged. Do not leave the placeholder in the hub pull request.
+`commit` is the full 40-character hash of the commit that landed on `master` when pull request #8 was merged. If GitHub squash-merges, that squash commit is the one to use. If GitHub creates a merge commit, use that merge commit. Copy it from the `master` history after the merge. Do not use a commit that exists only on the pull request branch.
 
-## Checklist
+## Steps
 
-- [ ] Merge the pull request that adds owned counts, GE limits, CI, and this file
-- [ ] Copy that merge commit's full 40-character hash into `commit=`
-- [ ] Replace the Screenshots placeholders in `README.md` with in-game shots of search, a crafting tree with owned counts, the GE limit and margin line, Ironman reference copy, and the bank-not-opened state
-- [ ] Confirm `icon.png` is still the original 48×48 mark at the repository root (no Jagex artwork, within the 48×72 hub limit)
-- [ ] Fork `runelite/plugin-hub`, add only `plugins/osrs-item-browser` with the text above, and open the hub pull request yourself
-- [ ] Read the hub CI log (`build` and Plugin Hub Checks) and, if it asks for changes, push them here and update `commit=`
+1. Merge pull request #8 (`cursor/compact-detail-pane-7325`) into `master`. Do not merge it from this file, and do not open a hub pull request first.
+2. On GitHub, open the `master` commit that the merge produced and copy its full 40-character hash.
+3. Fork `https://github.com/runelite/plugin-hub` into your own account. Create a branch from that fork's `master`.
+4. Add `plugins/osrs-item-browser` with the two lines above, and replace `REPLACE_WITH_MASTER_MERGE_COMMIT` with the hash from step 2. Change nothing else in the hub repository.
+5. Commit, push the branch to your fork, and open a pull request against `runelite/plugin-hub` `master`. Describe the plugin in the pull request body.
+6. Read the hub CI log (`build`, and Plugin Hub Checks if it asks for changes). If it fails, fix the plugin in this repository, merge that fix to `master`, and update `commit=` on the hub pull request to the new `master` hash.
+
+## Packager
+
+The hub CI runs the packager with `build=standard` and `verifyCore` in `package/verification-template`. The signing upload (`upload.jar` with `SIGNING_KEY`) needs the hub's secrets. If `master` moves after a local packager run, run the packager again on the new commit before updating `commit=`.
 
 ## Audit
 
-Checked against the current plugin-hub README and `runelite/example-plugin` `AGENTS.md`:
-
-- `runelite-plugin.properties` sets `displayName`, `author`, `description`, `tags`, `plugins`, and `build=standard`. `version` is left empty so the hub uses the commit.
-- `LICENSE` is BSD-2-Clause, copyright Vivialdi.
-- `icon.png` is a real PNG at the repository root, 48×48, which is inside the 48×72 limit.
-- `build.gradle` matches the example-plugin template: Java 11 via `options.release`, RuneLite `latest.release`, Lombok and JUnit only, no extra libraries. This repo also compiles with `-Xlint:deprecation`. Standard hub builds replace `build.gradle` and `settings.gradle`, so that flag does not affect the hub compile.
-- There is no `META-INF/services/net.runelite.client.plugins.Plugin` file. The hub loads `com.osr.jei.JEIPlugin` from `plugins=`.
-- Config group `osrjei` is unchanged. The GE mapping request reuses the existing **Show GE Prices** toggle, which already warns that it sends your IP to a third-party server. Owned counts do not send any request.
+- `runelite-plugin.properties` sets `displayName` (OSRS Item Browser), `author`, `description`, `tags`, `plugins`, and `build=standard`. `version` is empty so the hub uses the commit.
+- `plugins=com.osr.jei.JEIPlugin`. There is no `META-INF/services` plugin file.
+- `LICENSE` is BSD 2-Clause, copyright Vivialdi.
+- `icon.png` at the repository root is 48x48, inside the 48x72 and 256 KiB limits.
+- The hub standard build replaces `build.gradle` and `settings.gradle`. This repo adds no third-party dependency. Java 11, Lombok, and JUnit are the local toolchain. Compile uses `-Xlint:deprecation`.
+- Config group is `osrjei`. **GE prices** is the toggle that warns it sends your IP to a third-party server. Owned counts and the bank-seen flag stay on the client.
+- The right-click entry is **Item Browser Lookup** (`MenuAction.RUNELITE`). **Show on map** updates the world-map pins.

@@ -51,11 +51,16 @@ public class OwnedItemsTest {
         assertEquals(0L, OwnedItems.stillNeeded(40, 30));
         assertEquals(0L, OwnedItems.stillNeeded(-5, -1));
 
-        assertEquals("have 13+ / need 31", strip(OwnedText.haveNeedHtml(13, 31, false)));
+        assertEquals("have 13 (bank not checked) / need 31", strip(OwnedText.haveNeedHtml(13, 31, false)));
+        assertEquals("bank not checked / need 1", strip(OwnedText.haveNeedHtml(0, 1, false)));
+        assertFalse(OwnedText.haveNeedPlain(0, 1, false).contains("+"));
+        assertFalse(OwnedText.haveNeedPlain(13, 31, false).contains("+"));
         assertTrue(OwnedText.haveNeedHtml(13, 31, false).contains(OwnedText.UNKNOWN_COLOR));
-        assertEquals("still needed 18+", strip(OwnedText.stillNeededHtml(13, 31, false)));
-        assertEquals("Owned: 13 (bank not opened)", OwnedText.header(true, false, 13));
-        assertEquals("Owned: 0 (bank not opened)", OwnedText.header(true, false, 0));
+        assertTrue(OwnedText.haveNeedHtml(0, 1, false).contains(OwnedText.UNKNOWN_COLOR));
+        assertEquals("still needed 18 (bank not checked)", strip(OwnedText.stillNeededHtml(13, 31, false)));
+        assertEquals("Owned: 13 (bank not checked)", OwnedText.header(true, false, 13));
+        assertEquals("Owned: bank not checked", OwnedText.header(true, false, 0));
+        assertFalse(OwnedText.header(true, false, 0).contains("0"));
         assertEquals("Owned: log in to count", OwnedText.header(false, false, 0));
 
         OwnedItems.Snapshot bankOpen = OwnedItems.snapshot(inventory, wornCounts, bank, true, true);

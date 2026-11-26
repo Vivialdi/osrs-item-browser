@@ -6,9 +6,14 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /** Parses the {@code item-drops} table from an "Item sources" section. */
 public final class DropTableParser {
+
+    /** {@code drops-sailing}, {@code drops-combat}, {@code drops-reward}, and the other level icons. */
+    private static final Pattern LEVEL_KIND = Pattern.compile("class=\"drops-([a-z]+)\"");
 
     private DropTableParser() {
     }
@@ -61,15 +66,17 @@ public final class DropTableParser {
                 continue;
             }
             String source = Html.strip(cells.get(0));
-            String level = cells.size() > 1 ? Html.strip(cells.get(1)) : "";
-            String quantity = cells.size() > 2 ? Html.strip(cells.get(2)) : "";
-            String rate = cells.size() > 3 ? Html.strip(cells.get(3)) : "";
+            String levelCell = cells.size() > 1 ? cells.get(1) : "";
+            String level = plain(levelCell);
+            String quantity = cells.size() > 2 ? plain(cells.get(2)) : "";
+            String rate = cells.size() > 3 ? plain(cells.get(3)) : "";
             if (source.isEmpty()) {
                 continue;
             }
             DropEntry drop = new DropEntry();
             drop.setSource(source);
             drop.setLevel(level);
+            drop.setLevelKind(levelKind(levelCell));
             drop.setQuantity(quantity.isEmpty() ? "?" : quantity);
             drop.setRate(rate);
             drop.setRarity("");
@@ -80,5 +87,20 @@ public final class DropTableParser {
 
     private static String lowerTable(String table) {
         return table.toLowerCase(Locale.ROOT);
+    }
+
+    static String levelKind(String cellHtml) {
+        if (cellHtml == null || cellHtml.isEmpty()) {
+            return "";
+        }
+        Matcher matcher = LEVEL_KIND.matcher(cellHtml.toLowerCase(Locale.ROOT));
+        return matcher.find() ? matcher.group(1) : "";
+    }
+
+    private static String plain(String html) {
+        return Html.strip(html)
+            .replace('\u2013', '-')
+            .replace('\u2014', '-')
+            .replace('\u2212', '-');
     }
 }

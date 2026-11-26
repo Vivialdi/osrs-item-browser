@@ -11,10 +11,12 @@ import com.osr.jei.wiki.EquipmentParser;
 import com.osr.jei.wiki.HtmlSections;
 import com.osr.jei.wiki.PageContent;
 import com.osr.jei.wiki.RecipeParser;
+import com.osr.jei.wiki.RecipeUses;
 import com.osr.jei.wiki.ShopTableParser;
 
 import java.util.Collections;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 
 /** Everything parsed from a single item-page response. */
@@ -94,21 +96,54 @@ public final class ItemDetails {
     }
 
     public static ItemDetails from(PageContent page) {
+        return from(page, "");
+    }
+
+    /**
+     * Recipes whose product is {@code viewedName} stay in Crafting. Recipes that
+     * use that item to make something else add that product to Used to craft.
+     * An empty name keeps every recipe, which is the older page-wide parse.
+     */
+    public static ItemDetails from(PageContent page, String viewedName) {
         if (page == null || page.missing) {
             return MISSING;
         }
-        String shopsHtml = firstSection(page.html, "Shop_locations", "Shops", "Sold_by", "Store_locations");
+        String shopsHtml = shopSection(page.html);
         String sourcesHtml = firstSection(page.html, "Item_sources", "Sources", "Drop_sources", "Drops");
         String productsHtml = firstSection(page.html, "Products", "Uses", "Items_created", "Created_from");
-        return new ItemDetails(
+        RecipeUses.Split uses = RecipeUses.split(
             RecipeParser.parseAll(page.wikitext),
+            viewedName,
+            RecipeUses.pageSubject(page.wikitext));
+        return new ItemDetails(
+            uses.crafting,
             EquipmentParser.parseStats(page.wikitext),
             EquipmentParser.parseWeight(page.wikitext),
             ShopTableParser.parse(shopsHtml),
             DropTableParser.parse(sourcesHtml),
-            UsedInService.parseProductsTable(productsHtml),
+            RecipeUses.mergeProducts(UsedInService.parseProductsTable(productsHtml), uses.otherProducts),
             RequirementParser.parse(page.wikitext)
         );
+    }
+
+    /**
+     * Shop rows live in a {@code store-locations-list} table. Prefer the shop
+     * heading, but if that slice has no such table, scan the rest of the page.
+     * Some pages render the table under a heading id this plugin does not know.
+     */
+    private static String shopSection(String html) {
+        String slice = firstSection(html, "Shop_locations", "Shops", "Sold_by", "Store_locations");
+        if (hasStoreTable(slice)) {
+            return slice;
+        }
+        if (hasStoreTable(html)) {
+            return html;
+        }
+        return slice;
+    }
+
+    private static boolean hasStoreTable(String html) {
+        return html != null && html.toLowerCase(Locale.ROOT).contains("store-locations-list");
     }
 
     private static String firstSection(String html, String... ids) {

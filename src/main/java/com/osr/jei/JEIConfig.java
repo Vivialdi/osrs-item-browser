@@ -2,14 +2,18 @@ package com.osr.jei;
 
 import com.osr.jei.drops.DropSort;
 import com.osr.jei.ironman.IronmanMode;
+import com.osr.jei.map.PinSize;
 import com.osr.jei.search.SearchCriteria;
 import com.osr.jei.ui.FontFamilyChoice;
 import com.osr.jei.ui.FontStyleChoice;
+import com.osr.jei.ui.RecentLimit;
 import net.runelite.client.config.Config;
 import net.runelite.client.config.ConfigGroup;
 import net.runelite.client.config.ConfigItem;
 import net.runelite.client.config.ConfigSection;
 import net.runelite.client.config.Range;
+
+import java.awt.Color;
 
 @ConfigGroup("osrjei")
 public interface JEIConfig extends Config {
@@ -48,6 +52,27 @@ public interface JEIConfig extends Config {
         position = 4
     )
     String display = "display";
+
+    @ConfigSection(
+        name = "Default open sections",
+        description = "Which detail sections start open when you switch items. Monster pages still load only when you click a monster row.",
+        position = 5
+    )
+    String defaultOpen = "defaultOpen";
+
+    @ConfigSection(
+        name = "Map",
+        description = "Pins placed on the world map from a shop or a monster. They do not open the map.",
+        position = 6
+    )
+    String map = "map";
+
+    @ConfigSection(
+        name = "Lookup",
+        description = "Right-click Item Browser Lookup on items in the game.",
+        position = 7
+    )
+    String lookup = "lookup";
 
     @ConfigItem(
         keyName = "filterTradeable",
@@ -215,5 +240,192 @@ public interface JEIConfig extends Config {
     @Range(min = 25, max = 75)
     default int detailRatio() {
         return 45;
+    }
+
+    @ConfigItem(
+        keyName = "showHighAlch",
+        name = "Show high alch",
+        description = "Show the high alch value under the price block. Turning this off hides that row.",
+        section = "display",
+        position = 15
+    )
+    default boolean showHighAlch() {
+        return true;
+    }
+
+    @ConfigItem(
+        keyName = "wrapText",
+        name = "Wrap text",
+        description = "Wrap long lines in the detail pane, including section headers such as shop summaries.",
+        section = "display",
+        position = 16
+    )
+    default boolean wrapText() {
+        return true;
+    }
+
+    @ConfigItem(
+        keyName = "maxRecentItems",
+        name = "Max recent items",
+        description = "How many items Recent keeps. Each step is one full row of six icons. A lower number drops the oldest entries.",
+        section = "display",
+        position = 17
+    )
+    default RecentLimit maxRecentItems() {
+        return RecentLimit.TWELVE;
+    }
+
+    @ConfigItem(
+        keyName = "showRecentItems",
+        name = "Show recent items",
+        description = "Show Recent in the sidebar. Off hides that row and stops adding items. The saved list stays.",
+        section = "display",
+        position = 18
+    )
+    default boolean showRecentItems() {
+        return true;
+    }
+
+    @ConfigItem(
+        keyName = "showAnimationItems",
+        name = "Show animation items",
+        description = "Include cutscene and animation props in search. Off hides them. Favourites and Recent are unchanged.",
+        section = "display",
+        position = 19
+    )
+    default boolean showAnimationItems() {
+        return false;
+    }
+
+    @ConfigItem(
+        keyName = "showTaskCarryItems",
+        name = "Show task carry items",
+        description = "Include Sailing courier crates in search. Off hides them. Favourites and Recent are unchanged.",
+        section = "display",
+        position = 20
+    )
+    default boolean showTaskCarryItems() {
+        return false;
+    }
+
+    @ConfigItem(
+        keyName = "mapPinColor",
+        name = "Map pin color",
+        description = "Color of the world map pins this plugin places",
+        section = "map",
+        position = 0
+    )
+    default Color mapPinColor() {
+        return new Color(255, 105, 180);
+    }
+
+    @ConfigItem(
+        keyName = "pinSize",
+        name = "Pin size",
+        description = "Size of the world map pins. Medium is the standard size.",
+        section = "map",
+        position = 1
+    )
+    default PinSize pinSize() {
+        return PinSize.MEDIUM;
+    }
+
+    @ConfigItem(
+        keyName = "clearPinsOnSwitch",
+        name = "Clear pins on item switch",
+        description = "Remove this plugin's world map pins when you switch items. When off, pins stay until you turn the plugin off.",
+        section = "map",
+        position = 2
+    )
+    default boolean clearPinsOnSwitch() {
+        return true;
+    }
+
+    @ConfigItem(
+        keyName = "rightClickLookup",
+        name = "Right-click lookup",
+        description = "Add Item Browser Lookup to the right-click menu of inventory, bank, worn, and ground items.",
+        section = "lookup",
+        position = 0
+    )
+    default boolean rightClickLookup() {
+        return true;
+    }
+
+    @ConfigItem(
+        keyName = "openTradingByDefault",
+        name = "Open Trading details by default",
+        description = "Start Trading details open when you switch items. Uses prices already loaded for this item.",
+        section = "defaultOpen",
+        position = 0
+    )
+    default boolean openTradingByDefault() {
+        return false;
+    }
+
+    @ConfigItem(
+        keyName = "openEquipmentByDefault",
+        name = "Open Equipment by default",
+        description = "Start Equipment open when you switch items. Uses the stats already on the item page.",
+        section = "defaultOpen",
+        position = 1
+    )
+    default boolean openEquipmentByDefault() {
+        return false;
+    }
+
+    @ConfigItem(
+        keyName = "openShopsByDefault",
+        name = "Open Shop sources by default",
+        description = "Start Shop sources open when you switch items. Uses the shops already on the item page.",
+        section = "defaultOpen",
+        position = 2
+    )
+    default boolean openShopsByDefault() {
+        return false;
+    }
+
+    @ConfigItem(
+        keyName = "openUsedInByDefault",
+        name = "Open Used to craft by default",
+        description = "Start Used to craft open when you switch items. Uses the uses already on the item page.",
+        section = "defaultOpen",
+        position = 3
+    )
+    default boolean openUsedInByDefault() {
+        return false;
+    }
+
+    @ConfigItem(
+        keyName = "openDropsByDefault",
+        name = "Open Dropped by by default",
+        description = "Start Dropped by open when you switch items. The monster list is on the item page. Each monster still loads only when you click its row.",
+        section = "defaultOpen",
+        position = 4
+    )
+    default boolean openDropsByDefault() {
+        return false;
+    }
+
+    @ConfigItem(
+        keyName = "openCraftingByDefault",
+        name = "Open Crafting by default",
+        description = "Start Crafting open when you switch items. Shows the recipes already on the item page. Ingredient pages load only when you open that ingredient.",
+        section = "defaultOpen",
+        position = 5
+    )
+    default boolean openCraftingByDefault() {
+        return false;
+    }
+
+    @ConfigItem(
+        keyName = "openLocationsByDefault",
+        name = "Open Locations by default",
+        description = "After you click a monster, start its Locations list open. The monster page is still loaded only when you click the row.",
+        section = "defaultOpen",
+        position = 6
+    )
+    default boolean openLocationsByDefault() {
+        return false;
     }
 }

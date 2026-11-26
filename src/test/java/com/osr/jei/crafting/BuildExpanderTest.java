@@ -80,7 +80,7 @@ public class BuildExpanderTest {
         assertTrue(child.children.get(0).cycle);
         assertEquals(Collections.singletonList("attack potion(3)"), pages.loaded);
         assertEquals(1, tree.fetches);
-        assertEquals(Long.valueOf(1), tree.recipes.get(0).baseMaterials.get("Attack potion(4)"));
+        assertFalse(tree.recipes.get(0).baseMaterials.containsKey("Attack potion(4)"));
 
         int loads = pages.loads;
         pages.cache.putAll(pages.known);

@@ -57,11 +57,31 @@ public final class RecipeParser {
         }
 
         double xp = WikiText.firstDouble(WikiText.clean(WikiText.coalesce(p, "skill1exp", "skill2exp", "experience", "xp")));
-        int outputQuantity = WikiText.firstInt(WikiText.clean(WikiText.coalesce(p, "outputquantity", "outqty")));
+        List<String> outputs = new ArrayList<>();
+        int outputQuantity = 0;
+        for (int i = 1; i <= 11; i++) {
+            String named = productName(p.getOrDefault("output" + i, ""));
+            if (named.isEmpty()) {
+                continue;
+            }
+            outputs.add(named);
+            if (outputQuantity <= 0) {
+                outputQuantity = WikiText.firstInt(WikiText.clean(p.getOrDefault("output" + i + "quantity", "")));
+            }
+        }
+        if (outputs.isEmpty()) {
+            String legacy = productName(WikiText.coalesce(p, "outputname", "output", "product"));
+            if (!legacy.isEmpty()) {
+                outputs.add(legacy);
+            }
+        }
+        if (outputQuantity <= 0) {
+            outputQuantity = WikiText.firstInt(WikiText.clean(WikiText.coalesce(p, "outputquantity", "outqty")));
+        }
         if (outputQuantity <= 0) {
             outputQuantity = 1;
         }
-        String outputName = WikiText.clean(WikiText.coalesce(p, "outputname", "output"));
+        String outputName = outputs.isEmpty() ? "" : outputs.get(0);
         String skill2 = WikiText.clean(p.getOrDefault("skill2", ""));
         int level2 = WikiText.firstInt(WikiText.clean(p.getOrDefault("skill2lvl", "")));
         if (skill2.equalsIgnoreCase(skill)) {
@@ -99,6 +119,15 @@ public final class RecipeParser {
         if (skill.isEmpty() && ingredients.isEmpty()) {
             return null;
         }
-        return new RecipeInfo(skill, level, facility, xp, ingredients, outputQuantity, outputName, skill2, level2);
+        return new RecipeInfo(skill, level, facility, xp, ingredients, outputQuantity, outputName, skill2, level2, outputs);
+    }
+
+    /** Creation-table product. Blank, none, and n/a are not products. */
+    private static String productName(String raw) {
+        String name = WikiText.clean(raw).trim();
+        if (name.isEmpty() || name.equalsIgnoreCase("none") || name.equalsIgnoreCase("n/a")) {
+            return "";
+        }
+        return name;
     }
 }

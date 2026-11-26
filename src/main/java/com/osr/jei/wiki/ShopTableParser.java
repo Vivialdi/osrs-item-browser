@@ -96,10 +96,7 @@ public final class ShopTableParser {
             }
             String shopName = "";
             if (sellerCol < cells.size()) {
-                shopName = Html.linkText(cells.get(sellerCol));
-                if (shopName.isEmpty()) {
-                    shopName = Html.strip(cells.get(sellerCol));
-                }
+                shopName = sellerName(cells.get(sellerCol));
             }
             if (shopName.isEmpty() || shopName.equalsIgnoreCase("n/a")) {
                 continue;
@@ -129,9 +126,55 @@ public final class ShopTableParser {
                 stock = Html.sortNumber(cells.get(stockCol), ShopEntry.UNKNOWN);
             }
 
-            shops.add(new ShopEntry(shopName, price, stock, currency, sells));
+            shops.add(new ShopEntry(cleanName(shopName), price, stock, currency, sells));
         }
         return shops;
+    }
+
+    /**
+     * Seller cell: the shop link, plus a {@code shop-version} note such as
+     * {@code (post-quest)} when the wiki puts that in the same cell.
+     */
+    static String sellerName(String cell) {
+        String name = Html.linkText(cell);
+        if (name.isEmpty()) {
+            name = Html.strip(cell);
+        }
+        name = cleanName(name);
+        String version = versionNote(cell);
+        if (!version.isEmpty() && !name.contains(version)) {
+            name = (name + " " + version).trim();
+        }
+        return name;
+    }
+
+    static String versionNote(String cell) {
+        if (cell == null) {
+            return "";
+        }
+        String lower = cell.toLowerCase(Locale.ROOT);
+        int marker = lower.indexOf("shop-version");
+        if (marker < 0) {
+            return "";
+        }
+        int gt = cell.indexOf('>', marker);
+        int end = lower.indexOf("</span>", gt);
+        if (gt < 0 || end < 0) {
+            return "";
+        }
+        return Html.strip(cell.substring(gt + 1, end)).trim();
+    }
+
+    /** Wiki cells sometimes end the seller name with a stray period. */
+    static String cleanName(String name) {
+        if (name == null) {
+            return "";
+        }
+        String trimmed = name.trim();
+        while (trimmed.endsWith(".") || trimmed.endsWith("\u00b7")) {
+            trimmed = trimmed.substring(0, trimmed.length() - 1).trim();
+        }
+        return trimmed;
     }
 
     static boolean isStockHeader(String headerLower) {

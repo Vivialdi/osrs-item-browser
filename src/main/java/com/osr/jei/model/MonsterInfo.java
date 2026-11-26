@@ -13,10 +13,17 @@ public class MonsterInfo {
     public final int          combatLevel;
     /** Where this monster is found (e.g. "Lumbridge Swamp", "Varrock Sewers"). */
     public final List<String> locations;
+    /** True when the same page already contains world-map coordinates. */
+    public final boolean mapped;
 
     public MonsterInfo(String name, int combatLevel, List<String> locations) {
+        this(name, combatLevel, locations, false);
+    }
+
+    public MonsterInfo(String name, int combatLevel, List<String> locations, boolean mapped) {
         this.name        = name;
         this.combatLevel = combatLevel;
         this.locations   = locations;
+        this.mapped      = mapped;
     }
 }

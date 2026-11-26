@@ -88,6 +88,28 @@ public class WikiLoadTest {
     }
 
     @Test
+    public void monsterReadSkipsRenderedHtmlAndDoesNotBlockAFullPage() {
+        FakeHttp http = new FakeHttp();
+        try {
+            WikiPages pages = new WikiPages(http, () -> 1_000L);
+            PageContent lite = pages.loadWikitext("Zamorak crafter").join();
+            assertTrue(http.lastUrl.contains("prop=wikitext&"));
+            assertFalse(http.lastUrl.contains("prop=wikitext|text"));
+            assertFalse(lite.missing);
+            assertEquals(1, http.calls.get());
+            pages.loadWikitext("zamorak crafter").join();
+            assertEquals(1, http.calls.get());
+            pages.load("Zamorak crafter").join();
+            assertEquals(2, http.calls.get());
+            assertTrue(http.lastUrl.contains("prop=wikitext|text"));
+            pages.loadWikitext("Zamorak crafter").join();
+            assertEquals(2, http.calls.get());
+        } finally {
+            http.shutdown();
+        }
+    }
+
+    @Test
     public void failureBackoffDoesNotCallAgainUntilRetry() {
         FakeHttp http = new FakeHttp();
         try {
@@ -164,6 +186,7 @@ public class WikiLoadTest {
 
     private static final class FakeHttp extends WikiHttp {
         private final AtomicInteger calls = new AtomicInteger();
+        private volatile String lastUrl = "";
         private final CountDownLatch entered = new CountDownLatch(1);
         private final CompletableFuture<JsonObject> blocked = new CompletableFuture<>();
         private volatile Throwable failure;
@@ -175,6 +198,7 @@ public class WikiLoadTest {
 
         @Override
         public CompletableFuture<JsonObject> getWiki(String url) {
+            lastUrl = url;
             int n = calls.incrementAndGet();
             entered.countDown();
             if (blocked != null && loads == 0 && failure == null && url.contains("Abyssal_whip")) {

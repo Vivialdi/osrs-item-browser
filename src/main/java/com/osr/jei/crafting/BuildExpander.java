@@ -41,6 +41,8 @@ public final class BuildExpander {
         /** Further recipes on the same page, not folded into the rollup. */
         public final int otherRecipes;
         public final List<BuildNode> children;
+        /** False for a leaf. Unknown pages stay true until a load proves otherwise. */
+        public final boolean showExpander;
 
         BuildNode(
             String name,
@@ -53,7 +55,8 @@ public final class BuildExpander {
             boolean expanded,
             RecipeInfo recipe,
             int otherRecipes,
-            List<BuildNode> children
+            List<BuildNode> children,
+            boolean showExpander
         ) {
             this.name = name;
             this.quantity = quantity;
@@ -66,6 +69,7 @@ public final class BuildExpander {
             this.recipe = recipe;
             this.otherRecipes = otherRecipes;
             this.children = children;
+            this.showExpander = showExpander;
         }
 
         public boolean expandable() {
@@ -204,20 +208,22 @@ public final class BuildExpander {
         Integer id = pages == null ? null : pages.idFor(name);
         boolean cycle = ancestors.contains(nameKey(name)) || (id != null && ancestors.contains(idKey(id)));
         if (cycle) {
-            return new BuildNode(name, quantity, depth, path, true, false, false, false, null, 0, Collections.emptyList());
+            return new BuildNode(name, quantity, depth, path, true, false, false, false, null, 0, Collections.emptyList(), false);
         }
         if (depth >= MAX_DEPTH) {
-            return new BuildNode(name, quantity, depth, path, false, true, false, false, null, 0, Collections.emptyList());
+            return new BuildNode(name, quantity, depth, path, false, true, false, false, null, 0, Collections.emptyList(), false);
         }
 
         boolean known = unique.contains(key);
         if (!known && unique.size() >= MAX_NODES) {
-            return new BuildNode(name, quantity, depth, path, false, true, false, false, null, 0, Collections.emptyList());
+            return new BuildNode(name, quantity, depth, path, false, true, false, false, null, 0, Collections.emptyList(), false);
         }
 
         boolean want = fetchMissing || forcedPaths.contains(path);
         if (!want) {
-            return new BuildNode(name, quantity, depth, path, false, false, false, false, null, 0, Collections.emptyList());
+            ItemDetails cached = pages == null ? null : pages.cached(name);
+            boolean expander = showExpander(name, cached);
+            return new BuildNode(name, quantity, depth, path, false, false, false, false, null, 0, Collections.emptyList(), expander);
         }
 
         ItemDetails details = lookup(key, name, local, pages, fetchMissing, fetches);
@@ -225,7 +231,7 @@ public final class BuildExpander {
             if (!pending.contains(name)) {
                 pending.add(name);
             }
-            return new BuildNode(name, quantity, depth, path, false, false, true, true, null, 0, Collections.emptyList());
+            return new BuildNode(name, quantity, depth, path, false, false, true, true, null, 0, Collections.emptyList(), true);
         }
         if (!known) {
             unique.add(key);
@@ -235,7 +241,7 @@ public final class BuildExpander {
         int others = details.recipes == null ? 0 : Math.max(0, details.recipes.size() - (chosen == null ? 0 : 1));
         opened.add(path);
         if (chosen == null || chosen.ingredients == null || chosen.ingredients.isEmpty()) {
-            return new BuildNode(name, quantity, depth, path, false, false, false, true, chosen, others, Collections.emptyList());
+            return new BuildNode(name, quantity, depth, path, false, false, false, true, chosen, others, Collections.emptyList(), false);
         }
 
         Set<String> nextAncestors = new HashSet<>(ancestors);
@@ -263,7 +269,33 @@ public final class BuildExpander {
                 pending
             ));
         }
-        return new BuildNode(name, quantity, depth, path, false, false, false, true, chosen, others, children);
+        return new BuildNode(name, quantity, depth, path, false, false, false, true, chosen, others, children, true);
+    }
+
+    /**
+     * A classified base material never offers an arrow, even when its page
+     * has not been fetched. An unknown crafted item still does.
+     */
+    private static boolean showExpander(String name, ItemDetails cached) {
+        if (BaseMaterials.isBase(name, cached)) {
+            return false;
+        }
+        if (cached == null) {
+            return true;
+        }
+        return hasExpandableRecipe(cached);
+    }
+
+    private static boolean hasExpandableRecipe(ItemDetails details) {
+        if (details == null || details.recipes == null) {
+            return false;
+        }
+        for (RecipeInfo recipe : details.recipes) {
+            if (recipe != null && recipe.ingredients != null && !recipe.ingredients.isEmpty()) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static ItemDetails lookup(
@@ -310,14 +342,14 @@ public final class BuildExpander {
     }
 
     static Map<String, Long> rollup(List<BuildNode> ingredients) {
-        boolean anyExpanded = false;
+        boolean any = false;
         for (BuildNode ingredient : ingredients) {
-            if (ingredient.expanded || ingredient.loading) {
-                anyExpanded = true;
+            if (ingredient.expanded || ingredient.loading || !ingredient.showExpander) {
+                any = true;
                 break;
             }
         }
-        if (!anyExpanded) {
+        if (!any) {
             return Collections.emptyMap();
         }
         Map<String, Long> totals = new LinkedHashMap<>();
@@ -328,6 +360,9 @@ public final class BuildExpander {
     }
 
     private static void collect(BuildNode node, Map<String, Long> totals) {
+        if (node.cycle) {
+            return;
+        }
         if (node.children.isEmpty()) {
             totals.merge(node.name, node.quantity, Long::sum);
             return;
