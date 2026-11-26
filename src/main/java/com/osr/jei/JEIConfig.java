@@ -2,6 +2,7 @@ package com.osr.jei;
 
 import com.osr.jei.drops.DropSort;
 import com.osr.jei.ironman.IronmanMode;
+import com.osr.jei.map.PinSize;
 import com.osr.jei.search.SearchCriteria;
 import com.osr.jei.ui.FontFamilyChoice;
 import com.osr.jei.ui.FontStyleChoice;
@@ -10,6 +11,8 @@ import net.runelite.client.config.ConfigGroup;
 import net.runelite.client.config.ConfigItem;
 import net.runelite.client.config.ConfigSection;
 import net.runelite.client.config.Range;
+
+import java.awt.Color;
 
 @ConfigGroup("osrjei")
 public interface JEIConfig extends Config {
@@ -48,6 +51,20 @@ public interface JEIConfig extends Config {
         position = 4
     )
     String display = "display";
+
+    @ConfigSection(
+        name = "Map",
+        description = "Pins placed on the world map from a shop or a monster. They do not open the map.",
+        position = 5
+    )
+    String map = "map";
+
+    @ConfigSection(
+        name = "Lookup",
+        description = "Right-click Item Browser Lookup on items in the game.",
+        position = 6
+    )
+    String lookup = "lookup";
 
     @ConfigItem(
         keyName = "filterTradeable",
@@ -215,5 +232,71 @@ public interface JEIConfig extends Config {
     @Range(min = 25, max = 75)
     default int detailRatio() {
         return 45;
+    }
+
+    @ConfigItem(
+        keyName = "sectionsOpenByDefault",
+        name = "Sections open by default",
+        description = "Open the detail sections when you switch items. Monster locations still load only when you click a monster.",
+        section = "display",
+        position = 15
+    )
+    default boolean sectionsOpenByDefault() {
+        return false;
+    }
+
+    @ConfigItem(
+        keyName = "showHighAlch",
+        name = "Show high alch",
+        description = "Show the high alch value under the price block. Turning this off hides that row.",
+        section = "display",
+        position = 16
+    )
+    default boolean showHighAlch() {
+        return true;
+    }
+
+    @ConfigItem(
+        keyName = "mapPinColor",
+        name = "Map pin color",
+        description = "Color of the world map pins this plugin places",
+        section = "map",
+        position = 0
+    )
+    default Color mapPinColor() {
+        return new Color(255, 105, 180);
+    }
+
+    @ConfigItem(
+        keyName = "pinSize",
+        name = "Pin size",
+        description = "Size of the world map pins. Medium is the standard size.",
+        section = "map",
+        position = 1
+    )
+    default PinSize pinSize() {
+        return PinSize.MEDIUM;
+    }
+
+    @ConfigItem(
+        keyName = "clearPinsOnSwitch",
+        name = "Clear pins on item switch",
+        description = "Remove this plugin's world map pins when you switch items. When off, pins stay until you turn the plugin off.",
+        section = "map",
+        position = 2
+    )
+    default boolean clearPinsOnSwitch() {
+        return true;
+    }
+
+    @ConfigItem(
+        keyName = "rightClickLookup",
+        name = "Right-click lookup",
+        description = "Add Item Browser Lookup to the right-click menu of inventory, bank, worn, and ground items.",
+        section = "lookup",
+        position = 0
+    )
+    default boolean rightClickLookup() {
+        return true;
     }
 }

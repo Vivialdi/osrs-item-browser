@@ -13,7 +13,8 @@ The plugin is written in Java 11 and built with Gradle. It does not add librarie
 - **Shops.** Shop name, price, and stock. The name opens the wiki page. **Show on map** is offered when the page has coordinates.
 - **GE prices and high alch.** The guide price, the buy limit, and high alch stay visible. Instant sell, the post-tax margin, the 4-hour total, and alch profit sit under **Trading details**.
 - **Bank-aware have/need counts.** Inventory and worn gear count immediately. The bank is included only after you open it on that account. Until then the line says the bank has not been checked. It does not show 0 or a trailing plus.
-- **Map pins.** **Show on map** pins that shop or monster and does not open the map for you. The row then says to open the world map. Only the latest pin stays.
+- **Map pins.** **Show on map** pins that shop or monster and does not open the map for you. The row then says to open the world map. Only the latest pin stays. **Map pin color** defaults to hot pink, **Pin size** defaults to Medium, and the outline stays dark. Switching items removes the pins unless **Clear pins on item switch** is off.
+- **Detail sections.** They start collapsed. **Sections open by default** opens them when you switch items. A monster row has an arrow and says "Click for locations". Opening it loads that monster only then. **Show high alch** hides the high alch row when it is off. **Right-click lookup** turns the menu entry on or off.
 - **Item Browser Lookup.** Right-click an item in your inventory, bank (including placeholders and the bank inventory), worn equipment, the equipment stats interface, or on the ground, and choose **Item Browser Lookup**. Noted, placeholder, and worn items open the real item. The entry does not send an action to the game.
 
 Ironman mode can list shops, drops, and crafting before Grand Exchange info. Auto follows the logged-in account. On and Off override that.
@@ -49,6 +50,12 @@ These are the names shown in the RuneLite config panel, under **OSRS Item Browse
 | Display | Font style | REGULAR |
 | Display | Font family | DEFAULT |
 | Display | Detail pane share | 45 (25 to 75) |
+| Display | Sections open by default | Off |
+| Display | Show high alch | On |
+| Map | Map pin color | Hot pink |
+| Map | Pin size | Medium |
+| Map | Clear pins on item switch | On |
+| Lookup | Right-click lookup | On |
 
 **GE prices** warns that it sends your IP address to a server RuneLite does not control. The sidebar filters and the config choices stay in step with each other.
 

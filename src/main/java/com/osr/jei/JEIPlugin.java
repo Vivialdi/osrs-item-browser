@@ -4,6 +4,7 @@ import com.google.inject.Provides;
 import com.osr.jei.equipment.WornGear;
 import com.osr.jei.ironman.IronmanAccounts;
 import com.osr.jei.lookup.CanonicalIds;
+import com.osr.jei.map.MapMarkers;
 import com.osr.jei.lookup.LookupTargets;
 import com.osr.jei.owned.OwnedItems;
 import com.osr.jei.requirements.PlayerProgress;
@@ -67,6 +68,7 @@ public class JEIPlugin extends Plugin {
     @Inject private ItemManager itemManager;
     @Inject private JEIConfig config;
     @Inject private JEIPanel panel;
+    @Inject private MapMarkers mapMarkers;
     @Inject private PlayerProgress progress;
     @Inject private ConfigManager configManager;
 
@@ -225,6 +227,15 @@ public class JEIPlugin extends Plugin {
         String key = event.getKey();
         if ("ironmanMode".equals(key)) {
             clientThread.invokeLater(this::publishIronman);
+            return;
+        }
+        if ("mapPinColor".equals(key) || "pinSize".equals(key)) {
+            if (mapMarkers != null) {
+                mapMarkers.applyAppearance(config.mapPinColor(), config.pinSize());
+            }
+            return;
+        }
+        if ("rightClickLookup".equals(key) || "clearPinsOnSwitch".equals(key)) {
             return;
         }
         SwingUtilities.invokeLater(() -> panel.onConfigChanged(key));
@@ -424,6 +435,9 @@ public class JEIPlugin extends Plugin {
      */
     @Subscribe
     public void onMenuEntryAdded(MenuEntryAdded event) {
+        if (config != null && !config.rightClickLookup()) {
+            return;
+        }
         if (client.getMenu() == null || panel.isClosed()) {
             return;
         }

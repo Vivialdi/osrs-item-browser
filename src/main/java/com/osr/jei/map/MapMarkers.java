@@ -1,5 +1,6 @@
 package com.osr.jei.map;
 
+import com.osr.jei.JEIConfig;
 import com.osr.jei.wiki.MapPins;
 import com.osr.jei.wiki.TtlCache;
 import com.osr.jei.wiki.WikiPages;
@@ -31,17 +32,52 @@ public class MapMarkers {
     private final WorldMapPointManager points;
     private final WikiPages pages;
     private final TtlCache<String, List<MapPins.Pin>> pins = new TtlCache<>(32, WikiPages.TTL_MS);
+    static final Color DEFAULT_PIN = new Color(255, 105, 180);
+    static final Color OUTLINE = new Color(40, 30, 8);
+
     private final List<WorldMapPoint> active = new ArrayList<>();
-    private final BufferedImage icon = pinIcon();
+    private Color pinColor = DEFAULT_PIN;
+    private int pinEdge = PinSize.MEDIUM.pixels();
+    private BufferedImage icon;
     private final java.util.concurrent.atomic.AtomicInteger requestId = new java.util.concurrent.atomic.AtomicInteger();
     private WorldPoint pending;
 
     @Inject
-    public MapMarkers(Client client, ClientThread clientThread, WorldMapPointManager points, WikiPages pages) {
+    public MapMarkers(Client client, ClientThread clientThread, WorldMapPointManager points, WikiPages pages, JEIConfig config) {
         this.client = client;
         this.clientThread = clientThread;
         this.points = points;
         this.pages = pages;
+        Color chosen = config == null ? null : config.mapPinColor();
+        PinSize size = config == null ? null : config.pinSize();
+        this.pinColor = chosen == null ? DEFAULT_PIN : chosen;
+        this.pinEdge = size == null ? PinSize.MEDIUM.pixels() : size.pixels();
+        this.icon = pinIcon(pinColor, pinEdge);
+    }
+
+    /**
+     * Rebuilds the cached pin image from the configured color and size, then
+     * points every live marker at it. The image is drawn here. Swapping it
+     * onto the markers runs on the client thread and does not wait.
+     */
+    public void applyAppearance(Color color, PinSize size) {
+        pinColor = color == null ? DEFAULT_PIN : color;
+        pinEdge = size == null ? PinSize.MEDIUM.pixels() : size.pixels();
+        BufferedImage next = pinIcon(pinColor, pinEdge);
+        if (clientThread == null) {
+            applyIcon(next);
+            return;
+        }
+        clientThread.invokeLater(() -> applyIcon(next));
+    }
+
+    private void applyIcon(BufferedImage next) {
+        icon = next;
+        for (WorldMapPoint marker : active) {
+            if (marker != null) {
+                marker.setImage(next);
+            }
+        }
     }
 
     /** Drops every pin this plugin added. Safe from the EDT or the client thread. */
@@ -215,15 +251,27 @@ public class MapMarkers {
         javax.swing.SwingUtilities.invokeLater(() -> status.accept(value));
     }
 
-    private static BufferedImage pinIcon() {
-        BufferedImage image = new BufferedImage(16, 16, BufferedImage.TYPE_INT_ARGB);
+    static BufferedImage pinIcon(Color fill, int size) {
+        int edge = size < 8 ? 8 : size;
+        int inset = Math.max(1, edge / 8);
+        int diameter = Math.max(4, edge - inset * 2);
+        Color color = fill == null ? DEFAULT_PIN : fill;
+        BufferedImage image = new BufferedImage(edge, edge, BufferedImage.TYPE_INT_ARGB);
         Graphics2D g = image.createGraphics();
         g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-        g.setColor(new Color(255, 105, 180));
-        g.fillOval(2, 2, 12, 12);
-        g.setColor(new Color(40, 30, 8));
-        g.drawOval(2, 2, 12, 12);
+        g.setColor(color);
+        g.fillOval(inset, inset, diameter, diameter);
+        g.setColor(OUTLINE);
+        g.drawOval(inset, inset, diameter, diameter);
         g.dispose();
         return image;
+    }
+
+    BufferedImage icon() {
+        return icon;
+    }
+
+    List<WorldMapPoint> activePins() {
+        return active;
     }
 }

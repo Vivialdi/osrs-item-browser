@@ -41,6 +41,7 @@ import com.osr.jei.service.MonsterService;
 import com.osr.jei.service.PriceService;
 import com.osr.jei.map.MapMarkers;
 import com.osr.jei.ui.CollapsibleSection;
+import com.osr.jei.ui.DropRowMarks;
 import com.osr.jei.ui.EllipsisLabel;
 import com.osr.jei.ui.IconGridPanel;
 import com.osr.jei.ui.LabeledFilters;
@@ -442,6 +443,20 @@ public class JEIPanel extends PluginPanel {
         if ("detailRatio".equals(key)) {
             dividerApplied = true;
             applyDividerFromConfig();
+            return;
+        }
+        if ("sectionsOpenByDefault".equals(key)) {
+            sectionState.setMainSections(config.sectionsOpenByDefault());
+            syncSections();
+            if (shownDetails != null) {
+                renderDetails();
+            }
+            return;
+        }
+        if ("showHighAlch".equals(key)) {
+            if (shownItem != null) {
+                updateTradeLines(shownItem);
+            }
             return;
         }
         style = UiStyle.from(config.fontSize(), config.fontStyle(), config.fontFamily());
@@ -1191,7 +1206,7 @@ public class JEIPanel extends PluginPanel {
         }
         int gen = detailGeneration.incrementAndGet();
         resetItemExpansions();
-        if (mapMarkers != null) {
+        if (mapMarkers != null && (config == null || config.clearPinsOnSwitch())) {
             mapMarkers.clear();
         }
         wikiHttp.beginRequest();
@@ -1219,7 +1234,7 @@ public class JEIPanel extends PluginPanel {
         expandedPaths.clear();
         treeFailed.clear();
         treeLoadInFlight = false;
-        sectionState.reset();
+        sectionState.reset(config != null && config.sectionsOpenByDefault());
         syncSections();
     }
 
@@ -1556,7 +1571,7 @@ public class JEIPanel extends PluginPanel {
                 trading.add(row);
             }
         }
-        if (alchemy != null && alchemy.profit != null) {
+        if (config.showHighAlch() && alchemy != null && alchemy.profit != null) {
             trading.add(new StatGrid.Row(
                 "Alch profit", profitText(alchemy.profit.longValue()), alchemy.profit >= 0 ? GOOD : BAD));
         }
@@ -1605,7 +1620,7 @@ public class JEIPanel extends PluginPanel {
     }
 
     private void paintAlch(Alchemy.Result alchemy) {
-        if (alchemy == null) {
+        if (alchemy == null || (config != null && !config.showHighAlch())) {
             clearAlch();
             return;
         }
@@ -2368,7 +2383,6 @@ public class JEIPanel extends PluginPanel {
         if (!dropsSection.isExpanded()) {
             return;
         }
-        dropsContent.add(plainLabel("Click a monster for its locations", "small", MUTED));
         dropsContent.add(dropSortControl());
         dropsContent.add(Box.createRigidArea(new Dimension(0, 4)));
         DropSort sort = config.dropSort() == null ? DropSort.RATE : config.dropSort();
@@ -2402,28 +2416,27 @@ public class JEIPanel extends PluginPanel {
     }
 
     private JPanel buildDropRow(DropEntry drop) {
-        StringBuilder detail = new StringBuilder();
-        appendPiece(detail, drop.getLevel() == null || drop.getLevel().isEmpty() || "?".equals(drop.getLevel())
-            ? "" : "Lv. " + drop.getLevel());
-        appendPiece(detail, drop.getQuantity() == null || "?".equals(drop.getQuantity()) ? "" : drop.getQuantity());
-        DropRate rate = DropRate.parse(drop.getRate(), drop.getQuantity());
-        appendPiece(detail, "?".equals(rate.display) ? "" : rate.display);
-        String html = "<b>" + escape(drop.getSource()) + "</b><br><font color='#999999'>"
-            + escape(detail.length() == 0 ? "?" : detail.toString()) + "</font>";
-        JPanel row = new JPanel(new BorderLayout());
+        boolean open = openMonsters.contains(monsterKey(drop.getSource()));
+        JPanel row = new JPanel(new BorderLayout(4, 0));
         row.setBackground(ColorScheme.DARKER_GRAY_COLOR);
         row.setAlignmentX(LEFT_ALIGNMENT);
         row.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
         row.setBorder(BorderFactory.createEmptyBorder(3, 4, 3, 4));
+        JLabel chevron = new JLabel(DropRowMarks.chevron(open));
+        style.apply(chevron, "body");
+        chevron.setForeground(new Color(0x64, 0xb4, 0xff));
+        chevron.setCursor(row.getCursor());
         WrappingLabel label = new WrappingLabel();
         style.apply(label, "small");
         label.setForeground(Color.WHITE);
-        label.setHtml(html);
         label.setAlignmentX(LEFT_ALIGNMENT);
-        String tip = rate.original == null || rate.original.isEmpty() ? rate.display : rate.original;
-        row.setToolTipText(tip);
-        label.setToolTipText(tip);
+        label.setCursor(row.getCursor());
+        row.putClientProperty("drop.chevron", chevron);
+        row.putClientProperty("drop.label", label);
+        row.putClientProperty("drop.entry", drop);
+        row.add(chevron, BorderLayout.WEST);
         row.add(label, BorderLayout.CENTER);
+        paintDropHeader(chevron, label, drop, open);
         capHeight(row);
         String monsterName = drop.getSource();
         MouseAdapter opener = new MouseAdapter() {
@@ -2446,6 +2459,7 @@ public class JEIPanel extends PluginPanel {
         };
         row.addMouseListener(opener);
         label.addMouseListener(opener);
+        chevron.addMouseListener(opener);
         JPanel block = verticalBox();
         block.add(row);
         if (openMonsters.contains(monsterKey(monsterName))) {
@@ -2468,6 +2482,7 @@ public class JEIPanel extends PluginPanel {
                 populateDrops(shownDetails.drops);
             }
         } else {
+            refreshDropHeader(block, monsterName);
             replaceLocation(block, monsterName);
             showDropChange(block);
         }
@@ -2546,6 +2561,48 @@ public class JEIPanel extends PluginPanel {
             block.validate();
             block.repaint();
         }
+    }
+
+    private void paintDropHeader(JLabel chevron, WrappingLabel label, DropEntry drop, boolean open) {
+        String detail = dropDetail(drop);
+        chevron.setText(DropRowMarks.chevron(open));
+        label.setHtml(DropRowMarks.html(escape(drop.getSource()), escape(detail), open));
+        DropRate rate = DropRate.parse(drop.getRate(), drop.getQuantity());
+        String tip = rate.original == null || rate.original.isEmpty() ? rate.display : rate.original;
+        if (!open) {
+            tip = tip == null || tip.isEmpty() ? DropRowMarks.HINT : tip + ". " + DropRowMarks.HINT;
+        }
+        label.setToolTipText(tip);
+        if (chevron.getParent() instanceof JPanel) {
+            ((JPanel) chevron.getParent()).setToolTipText(tip);
+        }
+    }
+
+    private void refreshDropHeader(JPanel block, String monsterName) {
+        if (block.getComponentCount() == 0 || !(block.getComponent(0) instanceof JPanel)) {
+            return;
+        }
+        JPanel row = (JPanel) block.getComponent(0);
+        Object chevron = row.getClientProperty("drop.chevron");
+        Object label = row.getClientProperty("drop.label");
+        Object entry = row.getClientProperty("drop.entry");
+        if (chevron instanceof JLabel && label instanceof WrappingLabel && entry instanceof DropEntry) {
+            paintDropHeader(
+                (JLabel) chevron,
+                (WrappingLabel) label,
+                (DropEntry) entry,
+                openMonsters.contains(monsterKey(monsterName)));
+        }
+    }
+
+    private static String dropDetail(DropEntry drop) {
+        StringBuilder detail = new StringBuilder();
+        appendPiece(detail, drop.getLevel() == null || drop.getLevel().isEmpty() || "?".equals(drop.getLevel())
+            ? "" : "Lv. " + drop.getLevel());
+        appendPiece(detail, drop.getQuantity() == null || "?".equals(drop.getQuantity()) ? "" : drop.getQuantity());
+        DropRate rate = DropRate.parse(drop.getRate(), drop.getQuantity());
+        appendPiece(detail, "?".equals(rate.display) ? "" : rate.display);
+        return detail.length() == 0 ? "?" : detail.toString();
     }
 
     private void replaceLocation(JPanel block, String monsterName) {

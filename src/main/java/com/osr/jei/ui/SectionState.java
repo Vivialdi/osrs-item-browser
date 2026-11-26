@@ -5,7 +5,8 @@ import java.util.Map;
 
 /**
  * Collapsed or expanded choice for the detail sections of the open item.
- * Every section starts collapsed. Switching items clears the choices.
+ * Every section starts collapsed unless Sections open by default is on.
+ * Switching items clears the choices. Location lists stay collapsed either way.
  */
 public final class SectionState {
 
@@ -26,7 +27,29 @@ public final class SectionState {
 
     /** Back to collapsed for every section. Used when the open item changes. */
     public void reset() {
+        reset(false);
+    }
+
+    /**
+     * Clears the previous item's choices. When {@code openSections} is true the
+     * main detail sections start open. Monster location lists stay collapsed,
+     * so a drop row still waits for a click before any wiki fetch.
+     */
+    public void reset(boolean openSections) {
         expanded.clear();
+        if (openSections) {
+            setMainSections(true);
+        }
+    }
+
+    /** Shows or hides the main detail sections without touching location lists. */
+    public void setMainSections(boolean open) {
+        setExpanded(EQUIPMENT, open);
+        setExpanded(SHOPS, open);
+        setExpanded(USED_IN, open);
+        setExpanded(DROPS, open);
+        setExpanded(CRAFTING, open);
+        setExpanded(TRADING, open);
     }
 
     public void setExpanded(String key, boolean value) {
