@@ -134,6 +134,8 @@ Settings: default open sections, map, and lookup
 | Display | Wrap text | On |
 | Display | Max recent items | 12 |
 | Display | Show recent items | On |
+| Display | Show animation items | Off |
+| Display | Show task carry items | Off |
 | Default open sections | Open Trading details by default | Off |
 | Default open sections | Open Equipment by default | Off |
 | Default open sections | Open Shop sources by default | Off |
@@ -146,7 +148,7 @@ Settings: default open sections, map, and lookup
 | Map | Clear pins on item switch | On |
 | Lookup | Right-click lookup | On |
 
-**GE prices** warns that it sends your IP address to a server RuneLite does not control. The sidebar filters and the config choices stay in step with each other. **Max recent items** is 6, 12, 18, 24, 30, or 36 icons. **Show recent items** hides the Recent row and stops adding to it. The saved list stays. **Clear** on the Recent header removes that list.
+**GE prices** warns that it sends your IP address to a server RuneLite does not control. The sidebar filters and the config choices stay in step with each other. **Max recent items** is 6, 12, 18, 24, 30, or 36 icons. **Show recent items** hides the Recent row and stops adding to it. The saved list stays. **Clear** on the Recent header removes that list. **Show animation items** and **Show task carry items** leave cutscene props and Sailing courier crates out of search. Favourites and Recent still list every saved item.
 
 ## Data sources & privacy
 

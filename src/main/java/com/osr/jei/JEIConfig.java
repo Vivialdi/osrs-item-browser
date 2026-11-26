@@ -287,6 +287,28 @@ public interface JEIConfig extends Config {
     }
 
     @ConfigItem(
+        keyName = "showAnimationItems",
+        name = "Show animation items",
+        description = "Include cutscene and animation props in search. Off hides them. Favourites and Recent are unchanged.",
+        section = "display",
+        position = 19
+    )
+    default boolean showAnimationItems() {
+        return false;
+    }
+
+    @ConfigItem(
+        keyName = "showTaskCarryItems",
+        name = "Show task carry items",
+        description = "Include Sailing courier crates in search. Off hides them. Favourites and Recent are unchanged.",
+        section = "display",
+        position = 20
+    )
+    default boolean showTaskCarryItems() {
+        return false;
+    }
+
+    @ConfigItem(
         keyName = "mapPinColor",
         name = "Map pin color",
         description = "Color of the world map pins this plugin places",

@@ -94,12 +94,29 @@ public final class SearchCriteria {
     public final Members members;
     public final Equip equip;
     public final SlotChoice slot;
+    /** When false, cutscene props from the animation-item list are left out. */
+    public final boolean showAnimationItems;
+    /** When false, sailing courier crates from the task-carry list are left out. */
+    public final boolean showTaskCarryItems;
 
     public SearchCriteria(Trade trade, Members members, Equip equip, SlotChoice slot) {
+        this(trade, members, equip, slot, true, true);
+    }
+
+    public SearchCriteria(
+        Trade trade,
+        Members members,
+        Equip equip,
+        SlotChoice slot,
+        boolean showAnimationItems,
+        boolean showTaskCarryItems
+    ) {
         this.trade = trade == null ? Trade.ANY : trade;
         this.members = members == null ? Members.ANY : members;
         this.equip = equip == null ? Equip.ANY : equip;
         this.slot = slot == null ? SlotChoice.ANY : slot;
+        this.showAnimationItems = showAnimationItems;
+        this.showTaskCarryItems = showTaskCarryItems;
     }
 
     public boolean matches(SearchItem item) {
@@ -126,6 +143,12 @@ public final class SearchCriteria {
             return false;
         }
         if (slot != SlotChoice.ANY && ItemTraits.slot(flags) != slot.containerIndex()) {
+            return false;
+        }
+        if (!showAnimationItems && AnimationItems.contains(item.id)) {
+            return false;
+        }
+        if (!showTaskCarryItems && TaskCarryItems.contains(item.id)) {
             return false;
         }
         return true;

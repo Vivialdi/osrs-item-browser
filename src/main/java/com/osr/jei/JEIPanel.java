@@ -440,6 +440,10 @@ public class JEIPanel extends PluginPanel {
             rebuildHistory();
             return;
         }
+        if ("showAnimationItems".equals(key) || "showTaskCarryItems".equals(key)) {
+            refreshFilteredResults();
+            return;
+        }
         if (isSearchFilterKey(key)) {
             syncFilterControls();
             refreshFilteredResults();
@@ -723,7 +727,9 @@ public class JEIPanel extends PluginPanel {
             config.filterTradeable(),
             config.filterMembers(),
             config.filterEquipable(),
-            config.filterSlot()
+            config.filterSlot(),
+            config.showAnimationItems(),
+            config.showTaskCarryItems()
         );
     }
 

@@ -38,6 +38,8 @@ public class ConfigDefaultsTest {
         assertEquals(RecentLimit.TWELVE, config.maxRecentItems());
         assertEquals(12, config.maxRecentItems().count());
         assertTrue(config.showRecentItems());
+        assertFalse(config.showAnimationItems());
+        assertFalse(config.showTaskCarryItems());
 
         assertTrue(config.rightClickLookup());
         assertEquals(PinSize.MEDIUM, config.pinSize());
