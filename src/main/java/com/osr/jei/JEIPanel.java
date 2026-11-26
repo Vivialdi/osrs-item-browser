@@ -52,6 +52,7 @@ import com.osr.jei.ui.StarButton;
 import com.osr.jei.ui.ScrollWidthPanel;
 import com.osr.jei.ui.SectionState;
 import com.osr.jei.ui.SectionSummaries;
+import com.osr.jei.ui.ShopSources;
 import com.osr.jei.ui.SplitLayout;
 import com.osr.jei.ui.StatGrid;
 import com.osr.jei.ui.UiStyle;
@@ -291,7 +292,7 @@ public class JEIPanel extends PluginPanel {
             return;
         }
         initStarted = true;
-        style = UiStyle.from(config.fontSize(), config.fontStyle(), config.fontFamily());
+        style = panelStyle();
         setLayout(new BorderLayout(0, 4));
         setBackground(ColorScheme.DARK_GRAY_COLOR);
         setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
@@ -461,7 +462,7 @@ public class JEIPanel extends PluginPanel {
             }
             return;
         }
-        style = UiStyle.from(config.fontSize(), config.fontStyle(), config.fontFamily());
+        style = panelStyle();
         if (marketGrid != null) {
             marketGrid.useStyle(style);
         }
@@ -2075,17 +2076,12 @@ public class JEIPanel extends PluginPanel {
     }
 
     private List<ShopEntry> visibleShops(List<ShopEntry> shops) {
-        List<ShopEntry> visible = new ArrayList<>();
-        if (shops == null) {
-            return visible;
-        }
-        for (ShopEntry shop : shops) {
-            if (!shop.sells || shop.permanentlyOutOfStock()) {
-                continue;
-            }
-            visible.add(shop);
-        }
-        return visible;
+        return ShopSources.visible(shops);
+    }
+
+    private UiStyle panelStyle() {
+        return UiStyle.from(config.fontSize(), config.fontStyle(), config.fontFamily())
+            .withWrap(config.wrapText());
     }
 
     private List<String> knownProducts(List<String> products) {

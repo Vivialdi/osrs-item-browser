@@ -131,6 +131,7 @@ Settings: default open sections, map, and lookup
 | Display | Font family | DEFAULT |
 | Display | Detail pane share | 45 (25 to 75) |
 | Display | Show high alch | On |
+| Display | Wrap text | On |
 | Default open sections | Open Trading details by default | Off |
 | Default open sections | Open Equipment by default | Off |
 | Default open sections | Open Shop sources by default | Off |

@@ -253,6 +253,17 @@ public interface JEIConfig extends Config {
     }
 
     @ConfigItem(
+        keyName = "wrapText",
+        name = "Wrap text",
+        description = "Wrap long lines in the detail pane, including section headers such as shop summaries.",
+        section = "display",
+        position = 16
+    )
+    default boolean wrapText() {
+        return true;
+    }
+
+    @ConfigItem(
         keyName = "mapPinColor",
         name = "Map pin color",
         description = "Color of the world map pins this plugin places",

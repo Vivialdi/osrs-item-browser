@@ -15,13 +15,17 @@ public class WrappingLabel extends JLabel {
 
     private int laidOutWidth = -1;
     private View sizedView;
+    private String innerHtml = "";
+    private boolean htmlMode;
 
     public WrappingLabel() {
         setAlignmentX(LEFT_ALIGNMENT);
     }
 
     public void setHtml(String innerHtml) {
-        setText("<html>" + (innerHtml == null ? "" : innerHtml) + "</html>");
+        htmlMode = true;
+        this.innerHtml = innerHtml == null ? "" : innerHtml;
+        publish();
     }
 
     @Override
@@ -36,6 +40,18 @@ public class WrappingLabel extends JLabel {
         super.setFont(font);
         laidOutWidth = -1;
         sizedView = null;
+        if (htmlMode) {
+            publish();
+        }
+    }
+
+    private void publish() {
+        String body = wraps() ? innerHtml : "<nobr>" + innerHtml + "</nobr>";
+        setText("<html>" + body + "</html>");
+    }
+
+    private boolean wraps() {
+        return !Boolean.FALSE.equals(getClientProperty(UiStyle.WRAP));
     }
 
     @Override
@@ -49,13 +65,17 @@ public class WrappingLabel extends JLabel {
             Dimension plain = super.getPreferredSize();
             return new Dimension(Math.min(plain.width, width), plain.height);
         }
-        if (view != sizedView || width != laidOutWidth) {
-            view.setSize(width, 0);
+        int layoutWidth = width;
+        if (!wraps()) {
+            layoutWidth = Math.max(width, (int) Math.ceil(view.getPreferredSpan(View.X_AXIS)));
+        }
+        if (view != sizedView || layoutWidth != laidOutWidth) {
+            view.setSize(layoutWidth, 0);
             sizedView = view;
-            laidOutWidth = width;
+            laidOutWidth = layoutWidth;
         }
         int height = (int) Math.ceil(view.getPreferredSpan(View.Y_AXIS));
-        return new Dimension(width, Math.max(1, height));
+        return new Dimension(wraps() ? width : Math.min(layoutWidth, width), Math.max(1, height));
     }
 
     @Override

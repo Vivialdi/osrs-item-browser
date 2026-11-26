@@ -33,6 +33,7 @@ public class ConfigDefaultsTest {
         assertEquals(FontStyleChoice.REGULAR, config.fontStyle());
         assertEquals(FontFamilyChoice.DEFAULT, config.fontFamily());
         assertEquals(45, config.detailRatio());
+        assertTrue(config.wrapText());
 
         assertTrue(config.rightClickLookup());
         assertEquals(PinSize.MEDIUM, config.pinSize());
