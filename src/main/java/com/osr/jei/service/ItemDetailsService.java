@@ -62,7 +62,7 @@ public class ItemDetailsService {
                 log.debug("[Item Browser] Item page failed for '{}': {}", itemName, cause.getMessage());
                 throw new java.util.concurrent.CompletionException(cause);
             }
-            ItemDetails details = ItemDetails.from(page);
+            ItemDetails details = ItemDetails.from(page, itemName);
             cache.put(key, details, System.currentTimeMillis());
             return details;
         });
