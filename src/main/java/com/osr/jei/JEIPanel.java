@@ -47,6 +47,8 @@ import com.osr.jei.ui.EllipsisLabel;
 import com.osr.jei.ui.IconGridPanel;
 import com.osr.jei.ui.LocationLines;
 import com.osr.jei.ui.LabeledFilters;
+import com.osr.jei.ui.RecentHeader;
+import com.osr.jei.ui.RecentItems;
 import com.osr.jei.ui.RecipeTreeView;
 import com.osr.jei.ui.ShopRows;
 import com.osr.jei.ui.StarButton;
@@ -143,7 +145,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 @Singleton
 public class JEIPanel extends PluginPanel {
 
-    private static final int MAX_HISTORY = 12;
     private static final int INDEX_LIMIT = 40_000;
     private static final int INDEX_CHUNK = 500;
     private static final int SEARCH_LIMIT = 200;
@@ -429,6 +430,10 @@ public class JEIPanel extends PluginPanel {
             return;
         }
         if ("favourites".equals(key) || "recent".equals(key) || "ironmanMode".equals(key)) {
+            return;
+        }
+        if ("maxRecentItems".equals(key)) {
+            trimRecent(true);
             return;
         }
         if (isSearchFilterKey(key)) {
@@ -2791,13 +2796,17 @@ public class JEIPanel extends PluginPanel {
         bar.setVisible(favourites);
         bar.setAlignmentX(LEFT_ALIGNMENT);
         bar.setBorder(BorderFactory.createEmptyBorder(6, 0, 0, 0));
-        JLabel label = plainLabel(title, "small", MUTED);
-        label.setBorder(BorderFactory.createEmptyBorder(0, 0, 2, 0));
+        if (!favourites) {
+            bar.add(RecentHeader.create(style, this::clearRecent));
+        } else {
+            JLabel label = plainLabel(title, "small", MUTED);
+            label.setBorder(BorderFactory.createEmptyBorder(0, 0, 2, 0));
+            bar.add(label);
+        }
         IconGridPanel icons = new IconGridPanel(32, 4);
         icons.setBackground(ColorScheme.DARK_GRAY_COLOR);
         icons.setAlignmentX(LEFT_ALIGNMENT);
         bar.putClientProperty("icons", icons);
-        bar.add(label);
         bar.add(icons);
         if (favourites) {
             favouriteIcons = icons;
@@ -2808,11 +2817,28 @@ public class JEIPanel extends PluginPanel {
     private void updateHistory(SearchItem item) {
         recentIds.remove(Integer.valueOf(item.id));
         recentIds.add(0, item.id);
-        while (recentIds.size() > MAX_HISTORY) {
-            recentIds.remove(recentIds.size() - 1);
-        }
+        trimRecent(false);
         saveRecent();
         rebuildHistory();
+    }
+
+    private void clearRecent() {
+        RecentItems.clear(recentIds);
+        saveRecent();
+        rebuildHistory();
+    }
+
+    private int recentCap() {
+        return RecentItems.cap(config == null ? null : config.maxRecentItems());
+    }
+
+    private void trimRecent(boolean save) {
+        if (RecentItems.trim(recentIds, recentCap()) && save) {
+            saveRecent();
+        }
+        if (save) {
+            rebuildHistory();
+        }
     }
 
     private void rebuildHistory() {
@@ -2828,6 +2854,10 @@ public class JEIPanel extends PluginPanel {
             }
             any = true;
             historyIcons.add(buildHistoryCell(item));
+        }
+        JLabel clear = RecentHeader.clear(headerOf(historyPanel));
+        if (clear != null) {
+            clear.setVisible(any);
         }
         historyPanel.setVisible(any);
         historyPanel.revalidate();
@@ -2926,9 +2956,16 @@ public class JEIPanel extends PluginPanel {
     private void loadRecent() {
         recentIds.clear();
         addIds(recentIds, configManager.getConfiguration("osrjei", "recent"));
-        while (recentIds.size() > MAX_HISTORY) {
-            recentIds.remove(recentIds.size() - 1);
+        if (RecentItems.trim(recentIds, recentCap())) {
+            saveRecent();
         }
+    }
+
+    private static JPanel headerOf(JPanel strip) {
+        if (strip == null || strip.getComponentCount() == 0 || !(strip.getComponent(0) instanceof JPanel)) {
+            return null;
+        }
+        return (JPanel) strip.getComponent(0);
     }
 
     private void saveRecent() {

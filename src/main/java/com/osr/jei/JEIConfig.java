@@ -6,6 +6,7 @@ import com.osr.jei.map.PinSize;
 import com.osr.jei.search.SearchCriteria;
 import com.osr.jei.ui.FontFamilyChoice;
 import com.osr.jei.ui.FontStyleChoice;
+import com.osr.jei.ui.RecentLimit;
 import net.runelite.client.config.Config;
 import net.runelite.client.config.ConfigGroup;
 import net.runelite.client.config.ConfigItem;
@@ -261,6 +262,17 @@ public interface JEIConfig extends Config {
     )
     default boolean wrapText() {
         return true;
+    }
+
+    @ConfigItem(
+        keyName = "maxRecentItems",
+        name = "Max recent items",
+        description = "How many items Recent keeps. Each step is one full row of six icons. A lower number drops the oldest entries.",
+        section = "display",
+        position = 17
+    )
+    default RecentLimit maxRecentItems() {
+        return RecentLimit.TWELVE;
     }
 
     @ConfigItem(

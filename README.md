@@ -132,6 +132,7 @@ Settings: default open sections, map, and lookup
 | Display | Detail pane share | 45 (25 to 75) |
 | Display | Show high alch | On |
 | Display | Wrap text | On |
+| Display | Max recent items | 12 |
 | Default open sections | Open Trading details by default | Off |
 | Default open sections | Open Equipment by default | Off |
 | Default open sections | Open Shop sources by default | Off |
@@ -144,7 +145,7 @@ Settings: default open sections, map, and lookup
 | Map | Clear pins on item switch | On |
 | Lookup | Right-click lookup | On |
 
-**GE prices** warns that it sends your IP address to a server RuneLite does not control. The sidebar filters and the config choices stay in step with each other.
+**GE prices** warns that it sends your IP address to a server RuneLite does not control. The sidebar filters and the config choices stay in step with each other. **Max recent items** is 6, 12, 18, 24, 30, or 36 icons. **Clear** on the Recent header removes that list.
 
 ## Data sources & privacy
 

@@ -7,6 +7,7 @@ import com.osr.jei.search.SearchCriteria;
 import com.osr.jei.ui.DefaultOpen;
 import com.osr.jei.ui.FontFamilyChoice;
 import com.osr.jei.ui.FontStyleChoice;
+import com.osr.jei.ui.RecentLimit;
 import com.osr.jei.ui.SectionState;
 import org.junit.Test;
 
@@ -34,6 +35,8 @@ public class ConfigDefaultsTest {
         assertEquals(FontFamilyChoice.DEFAULT, config.fontFamily());
         assertEquals(45, config.detailRatio());
         assertTrue(config.wrapText());
+        assertEquals(RecentLimit.TWELVE, config.maxRecentItems());
+        assertEquals(12, config.maxRecentItems().count());
 
         assertTrue(config.rightClickLookup());
         assertEquals(PinSize.MEDIUM, config.pinSize());
