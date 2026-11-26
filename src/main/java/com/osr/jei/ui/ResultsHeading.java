@@ -62,7 +62,6 @@ public final class ResultsHeading {
         label.setHtml(LABEL);
 
         bar.add(line);
-        bar.add(Box.createRigidArea(new Dimension(0, 0)));
         bar.add(label);
         return bar;
     }
