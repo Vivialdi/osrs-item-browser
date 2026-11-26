@@ -4,6 +4,7 @@ import com.osr.jei.drops.DropSort;
 import com.osr.jei.ironman.IronmanMode;
 import com.osr.jei.map.PinSize;
 import com.osr.jei.search.SearchCriteria;
+import com.osr.jei.ui.DefaultOpen;
 import com.osr.jei.ui.FontFamilyChoice;
 import com.osr.jei.ui.FontStyleChoice;
 import com.osr.jei.ui.SectionState;
@@ -37,27 +38,50 @@ public class ConfigDefaultsTest {
         assertEquals(PinSize.MEDIUM, config.pinSize());
         assertEquals(16, config.pinSize().pixels());
         assertTrue(config.clearPinsOnSwitch());
-        assertFalse(config.sectionsOpenByDefault());
         assertTrue(config.showHighAlch());
         assertEquals(new Color(255, 105, 180), config.mapPinColor());
+        assertFalse(config.openTradingByDefault());
+        assertFalse(config.openEquipmentByDefault());
+        assertFalse(config.openShopsByDefault());
+        assertFalse(config.openUsedInByDefault());
+        assertFalse(config.openDropsByDefault());
+        assertFalse(config.openCraftingByDefault());
+        assertFalse(config.openLocationsByDefault());
     }
 
     @Test
-    public void openByDefaultExpandsMainSectionsAndLeavesLocationsClosed() {
+    public void eachDefaultOpenSettingStartsOnlyThatSection() {
         SectionState state = new SectionState();
-        state.reset(true);
-        assertTrue(state.expanded(SectionState.EQUIPMENT));
-        assertTrue(state.expanded(SectionState.SHOPS));
-        assertTrue(state.expanded(SectionState.USED_IN));
-        assertTrue(state.expanded(SectionState.DROPS));
-        assertTrue(state.expanded(SectionState.CRAFTING));
-        assertTrue(state.expanded(SectionState.TRADING));
-        assertFalse(state.expanded(SectionState.LOCATIONS));
+        DefaultOpen.apply(state, new JEIConfig() {
+            @Override
+            public boolean openShopsByDefault() {
+                return true;
+            }
 
-        state.reset(false);
-        assertFalse(state.expanded(SectionState.SHOPS));
+            @Override
+            public boolean openCraftingByDefault() {
+                return true;
+            }
+        });
+        assertTrue(state.expanded(SectionState.SHOPS));
+        assertTrue(state.expanded(SectionState.CRAFTING));
+        assertFalse(state.expanded(SectionState.TRADING));
+        assertFalse(state.expanded(SectionState.EQUIPMENT));
+        assertFalse(state.expanded(SectionState.USED_IN));
         assertFalse(state.expanded(SectionState.DROPS));
         assertFalse(state.expanded(SectionState.LOCATIONS));
+
+        state.setExpanded(SectionState.DROPS, true);
+        state.setExpanded(SectionState.SHOPS, DefaultOpen.enabled(new JEIConfig() {
+            @Override
+            public boolean openShopsByDefault() {
+                return false;
+            }
+        }, "openShopsByDefault"));
+        assertFalse(state.expanded(SectionState.SHOPS));
+        assertTrue(state.expanded(SectionState.DROPS));
+        assertEquals(SectionState.DROPS, DefaultOpen.sectionKey("openDropsByDefault"));
+        assertEquals(null, DefaultOpen.sectionKey("showHighAlch"));
     }
 
     private static final class Bare implements JEIConfig {

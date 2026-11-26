@@ -41,6 +41,7 @@ import com.osr.jei.service.MonsterService;
 import com.osr.jei.service.PriceService;
 import com.osr.jei.map.MapMarkers;
 import com.osr.jei.ui.CollapsibleSection;
+import com.osr.jei.ui.DefaultOpen;
 import com.osr.jei.ui.DropRowMarks;
 import com.osr.jei.ui.EllipsisLabel;
 import com.osr.jei.ui.IconGridPanel;
@@ -445,8 +446,9 @@ public class JEIPanel extends PluginPanel {
             applyDividerFromConfig();
             return;
         }
-        if ("sectionsOpenByDefault".equals(key)) {
-            sectionState.setMainSections(config.sectionsOpenByDefault());
+        String defaultSection = DefaultOpen.sectionKey(key);
+        if (defaultSection != null) {
+            sectionState.setExpanded(defaultSection, DefaultOpen.enabled(config, key));
             syncSections();
             if (shownDetails != null) {
                 renderDetails();
@@ -1234,7 +1236,7 @@ public class JEIPanel extends PluginPanel {
         expandedPaths.clear();
         treeFailed.clear();
         treeLoadInFlight = false;
-        sectionState.reset(config != null && config.sectionsOpenByDefault());
+        DefaultOpen.apply(sectionState, config);
         syncSections();
     }
 

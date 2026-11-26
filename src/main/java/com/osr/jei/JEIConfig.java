@@ -53,16 +53,23 @@ public interface JEIConfig extends Config {
     String display = "display";
 
     @ConfigSection(
+        name = "Default open sections",
+        description = "Which detail sections start open when you switch items. Monster pages still load only when you click a monster row.",
+        position = 5
+    )
+    String defaultOpen = "defaultOpen";
+
+    @ConfigSection(
         name = "Map",
         description = "Pins placed on the world map from a shop or a monster. They do not open the map.",
-        position = 5
+        position = 6
     )
     String map = "map";
 
     @ConfigSection(
         name = "Lookup",
         description = "Right-click Item Browser Lookup on items in the game.",
-        position = 6
+        position = 7
     )
     String lookup = "lookup";
 
@@ -235,22 +242,11 @@ public interface JEIConfig extends Config {
     }
 
     @ConfigItem(
-        keyName = "sectionsOpenByDefault",
-        name = "Sections open by default",
-        description = "Open the detail sections when you switch items. Monster locations still load only when you click a monster.",
-        section = "display",
-        position = 15
-    )
-    default boolean sectionsOpenByDefault() {
-        return false;
-    }
-
-    @ConfigItem(
         keyName = "showHighAlch",
         name = "Show high alch",
         description = "Show the high alch value under the price block. Turning this off hides that row.",
         section = "display",
-        position = 16
+        position = 15
     )
     default boolean showHighAlch() {
         return true;
@@ -298,5 +294,82 @@ public interface JEIConfig extends Config {
     )
     default boolean rightClickLookup() {
         return true;
+    }
+
+    @ConfigItem(
+        keyName = "openTradingByDefault",
+        name = "Open Trading details by default",
+        description = "Start Trading details open when you switch items. Uses prices already loaded for this item.",
+        section = "defaultOpen",
+        position = 0
+    )
+    default boolean openTradingByDefault() {
+        return false;
+    }
+
+    @ConfigItem(
+        keyName = "openEquipmentByDefault",
+        name = "Open Equipment by default",
+        description = "Start Equipment open when you switch items. Uses the stats already on the item page.",
+        section = "defaultOpen",
+        position = 1
+    )
+    default boolean openEquipmentByDefault() {
+        return false;
+    }
+
+    @ConfigItem(
+        keyName = "openShopsByDefault",
+        name = "Open Shop sources by default",
+        description = "Start Shop sources open when you switch items. Uses the shops already on the item page.",
+        section = "defaultOpen",
+        position = 2
+    )
+    default boolean openShopsByDefault() {
+        return false;
+    }
+
+    @ConfigItem(
+        keyName = "openUsedInByDefault",
+        name = "Open Used to craft by default",
+        description = "Start Used to craft open when you switch items. Uses the uses already on the item page.",
+        section = "defaultOpen",
+        position = 3
+    )
+    default boolean openUsedInByDefault() {
+        return false;
+    }
+
+    @ConfigItem(
+        keyName = "openDropsByDefault",
+        name = "Open Dropped by by default",
+        description = "Start Dropped by open when you switch items. The monster list is on the item page. Each monster still loads only when you click its row.",
+        section = "defaultOpen",
+        position = 4
+    )
+    default boolean openDropsByDefault() {
+        return false;
+    }
+
+    @ConfigItem(
+        keyName = "openCraftingByDefault",
+        name = "Open Crafting by default",
+        description = "Start Crafting open when you switch items. Shows the recipes already on the item page. Ingredient pages load only when you open that ingredient.",
+        section = "defaultOpen",
+        position = 5
+    )
+    default boolean openCraftingByDefault() {
+        return false;
+    }
+
+    @ConfigItem(
+        keyName = "openLocationsByDefault",
+        name = "Open Locations by default",
+        description = "After you click a monster, start its Locations list open. The monster page is still loaded only when you click the row.",
+        section = "defaultOpen",
+        position = 6
+    )
+    default boolean openLocationsByDefault() {
+        return false;
     }
 }
