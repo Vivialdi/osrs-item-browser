@@ -15,6 +15,8 @@ The shot above was taken before the drop header dropped the monster name. It now
 - **Crafting tree and base materials.** A recipe shows the skill, level, facility, and experience. An ingredient that is itself crafted has an arrow. Rune essence, ores, logs, raw fish, herbs, shop stock, monster drops, and items gathered by Mining, Woodcutting, Fishing, Hunter, or Farming do not. One **Base materials** summary at the bottom lists what that recipe still needs. A requirement you do not meet is marked on the recipe line.
 
 ![Air rune crafting methods, including one unmet requirement](docs/images/crafting-runecraft.png)
+
+![Air battlestaff crafting tree, with nested steps and base materials](docs/images/crafting-air-battlestaff.png)
 - **Monster drops.** Quantity and rate. A rate the wiki states as a fraction, a percentage, Always, or a range is shown as `1/X`. Words such as Rare stay as written. Sort by rate, combat level, or name. Each row has an arrow and says "Click for locations".
 
 ![Dropped by list. Each row can be opened](docs/images/dropped-by.png)

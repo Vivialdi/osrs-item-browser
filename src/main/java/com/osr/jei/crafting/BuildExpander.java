@@ -360,6 +360,9 @@ public final class BuildExpander {
     }
 
     private static void collect(BuildNode node, Map<String, Long> totals) {
+        if (node.cycle) {
+            return;
+        }
         if (node.children.isEmpty()) {
             totals.merge(node.name, node.quantity, Long::sum);
             return;

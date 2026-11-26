@@ -29,6 +29,36 @@ import static org.junit.Assert.assertTrue;
 public class RecipeTreeViewTest {
 
     @Test
+    public void loopedIngredientIsNamedOnTheRecipeLine() throws Exception {
+        RecipeInfo poison = new RecipeInfo(
+            "", 0, "", 0,
+            Arrays.asList(new RecipeIngredient("Iron dagger", 1), new RecipeIngredient("Weapon poison(+)", 1)),
+            1, "");
+        ItemDetails dagger = new ItemDetails(
+            Collections.singletonList(poison),
+            java.util.Optional.empty(),
+            Double.NaN,
+            Collections.emptyList(),
+            Collections.emptyList(),
+            Collections.emptyList());
+        BuildExpander.Result tree = BuildExpander.expandSelected(
+            "Iron dagger", null, dagger, new NoPages(), Collections.emptySet());
+        assertTrue(tree.recipes.get(0).ingredients.get(0).cycle);
+        assertFalse(tree.recipes.get(0).ingredients.get(1).cycle);
+
+        SwingUtilities.invokeAndWait(() -> {
+            JPanel body = new JPanel();
+            RecipeTreeView.fill(body, UiStyle.from(12, FontStyleChoice.REGULAR, FontFamilyChoice.SANS_SERIF),
+                tree, false, idleActions(), null, null, false);
+            String text = collect(body);
+            assertFalse(text.contains("(loop)"));
+            assertTrue(text.contains("Iron dagger"));
+            assertTrue(text.contains("Weapon poison(+)"));
+            assertEquals(text.indexOf("Iron dagger"), text.lastIndexOf("Iron dagger"));
+        });
+    }
+
+    @Test
     public void treeUsesTheConfiguredFontAndKeepsToggleSeparateFromOpen() throws Exception {
         RecipeInfo recipe = new RecipeInfo(
             "Smithing", 99, "Anvil", 375,

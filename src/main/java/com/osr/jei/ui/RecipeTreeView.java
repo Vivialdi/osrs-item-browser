@@ -20,6 +20,8 @@ import java.awt.Cursor;
 import java.awt.Dimension;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -122,12 +124,15 @@ public final class RecipeTreeView {
             }
             BuildExpander.RecipeBranch branch = result.recipes.get(i);
             Mark mark = markOf(marks, branch.recipe);
-            String summary = RecipeText.summary(branch.recipe);
+            String summary = RecipeText.withLoopedIngredients(
+                RecipeText.summary(branch.recipe), loopedNames(branch.ingredients));
             if (!summary.isEmpty()) {
                 body.add(html(style, RequirementJudge.htmlPrefix(mark) + escape(summary), "small", mark == Mark.UNMET ? UNMET : GOOD));
             }
             for (BuildExpander.BuildNode ingredient : branch.ingredients) {
-                addNode(body, style, ingredient, actions, counts, marks, mark == Mark.UNMET);
+                if (!ingredient.cycle) {
+                    addNode(body, style, ingredient, actions, counts, marks, mark == Mark.UNMET);
+                }
             }
         }
         addBaseMaterials(body, style, summaryBranch, counts);
@@ -184,6 +189,19 @@ public final class RecipeTreeView {
         }
     }
 
+    private static List<String> loopedNames(List<BuildExpander.BuildNode> nodes) {
+        List<String> names = new ArrayList<>();
+        if (nodes == null) {
+            return names;
+        }
+        for (BuildExpander.BuildNode node : nodes) {
+            if (node != null && node.cycle && node.name != null && !node.name.isEmpty()) {
+                names.add(node.name);
+            }
+        }
+        return names;
+    }
+
     private static boolean hasIngredients(BuildExpander.Result result) {
         for (BuildExpander.RecipeBranch branch : result.recipes) {
             if (!branch.ingredients.isEmpty()) {
@@ -217,12 +235,15 @@ public final class RecipeTreeView {
         }
         block.add(row(style, node, actions, counts, parentUnmet));
         Mark childMark = Mark.NEUTRAL;
+        List<String> loopedChildren = loopedNames(node.children);
         if (node.expanded && node.recipe != null) {
             childMark = markOf(marks, node.recipe);
-            String summary = RecipeText.summary(node.recipe);
+            String summary = RecipeText.withLoopedIngredients(RecipeText.summary(node.recipe), loopedChildren);
             if (!summary.isEmpty()) {
                 block.add(html(style, RequirementJudge.htmlPrefix(childMark) + escape(summary), "small", childMark == Mark.UNMET ? UNMET : GOOD));
             }
+        } else if (node.expanded && !loopedChildren.isEmpty()) {
+            block.add(html(style, escape(RecipeText.withLoopedIngredients("", loopedChildren)), "small", MUTED));
         }
         if (node.loading) {
             block.add(label(style, "Loading recipe\u2026", "small", MUTED));
@@ -235,7 +256,9 @@ public final class RecipeTreeView {
         }
         boolean unmetHere = parentUnmet || childMark == Mark.UNMET;
         for (BuildExpander.BuildNode child : node.children) {
-            addNode(block, style, child, actions, counts, marks, unmetHere);
+            if (!child.cycle) {
+                addNode(block, style, child, actions, counts, marks, unmetHere);
+            }
         }
         parent.add(block);
     }
@@ -300,9 +323,6 @@ public final class RecipeTreeView {
         actions.icon(icon, node.name);
         boolean open = actions.canOpen(node.name);
         String text = quantityText(node.name, node.quantity);
-        if (node.cycle) {
-            text = text + " (loop)";
-        }
         Color nameColor = unmet ? UNMET : (open ? LINK : ColorScheme.LIGHT_GRAY_COLOR);
         String suffix = "";
         Color suffixColor = nameColor;
