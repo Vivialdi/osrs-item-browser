@@ -1,6 +1,6 @@
-# OSRS Item Browser
+# Item Finder
 
-OSRS Item Browser is a RuneLite sidebar for looking up Old School RuneScape items while you play. Search the item list that is already in the game cache, then open one item for its crafting tree, monster drops, shops, Grand Exchange prices, high alch, and what you already own.
+Item Finder is a RuneLite sidebar for looking up Old School RuneScape items while you play. Search the item list that is already in the game cache, then open one item for its crafting tree, monster drops, shops, Grand Exchange prices, high alch, and what you already own.
 
 The plugin is written in Java 11 and built with Gradle, using the libraries already in the repository. It is licensed under the BSD 2-Clause License in `LICENSE`.
 
@@ -88,8 +88,8 @@ Ironman mode can list shops, drops, and crafting before Grand Exchange info. Aut
 
 ## How to use
 
-1. Enable **OSRS Item Browser** from the Plugin Hub.
-2. Open the sidebar. The button tooltip is **OSRS Item Browser**.
+1. Enable **Item Finder** from the Plugin Hub.
+2. Open the sidebar. The button tooltip is **Item Finder**.
 3. Type in the search box and set any filters. Results are icons.
 4. Click an item, or right-click an in-game item and choose **Item Browser Lookup**.
 5. Open a section header for the full list. Click an ingredient arrow for the next crafting step. Use **Show on map** when you want a pin, then open the world map yourself.
@@ -98,7 +98,7 @@ Ironman mode can list shops, drops, and crafting before Grand Exchange info. Aut
 
 ## Configuration
 
-These are the names shown in the RuneLite config panel, under **OSRS Item Browser**. Saved settings stay with the account.
+These are the names shown in the RuneLite config panel, under **Item Finder**. Saved settings stay with the account.
 
 <table>
 <tr>

@@ -53,7 +53,7 @@ import java.util.Map;
  */
 @Slf4j
 @PluginDescriptor(
-    name = "OSRS Item Browser",
+    name = "Item Finder",
     description = "Browse items, drop tables, shop prices, and sources",
     tags = {"item", "drops", "wiki", "browser", "search", "recipe"}
 )
@@ -92,13 +92,13 @@ public class JEIPlugin extends Plugin {
                     }
                 }));
                 navButton = NavigationButton.builder()
-                    .tooltip("OSRS Item Browser")
+                    .tooltip("Item Finder")
                     .icon(createIcon())
                     .priority(6)
                     .panel(panel)
                     .build();
                 clientToolbar.addNavigation(navButton);
-                log.info("OSRS Item Browser started");
+                log.info("Item Finder started");
                 clientThread.invokeLater(() -> {
                     if (panel.isClosed()) {
                         return;
@@ -112,7 +112,7 @@ public class JEIPlugin extends Plugin {
                     progress.refreshSkills();
                 });
             } catch (Exception e) {
-                log.error("OSRS Item Browser failed to start", e);
+                log.error("Item Finder failed to start", e);
             }
         });
     }
@@ -212,7 +212,7 @@ public class JEIPlugin extends Plugin {
                 clientToolbar.removeNavigation(navButton);
                 navButton = null;
             }
-            log.info("OSRS Item Browser stopped");
+            log.info("Item Finder stopped");
         });
     }
 
