@@ -53,7 +53,7 @@ import java.util.Map;
  */
 @Slf4j
 @PluginDescriptor(
-    name = "Item Finder",
+    name = "Item Browser",
     description = "Browse items, drop tables, shop prices, and sources",
     tags = {"item", "drops", "wiki", "browser", "search", "recipe"}
 )
@@ -92,13 +92,13 @@ public class JEIPlugin extends Plugin {
                     }
                 }));
                 navButton = NavigationButton.builder()
-                    .tooltip("Item Finder")
+                    .tooltip("Item Browser")
                     .icon(createIcon())
                     .priority(6)
                     .panel(panel)
                     .build();
                 clientToolbar.addNavigation(navButton);
-                log.info("Item Finder started");
+                log.info("Item Browser started");
                 clientThread.invokeLater(() -> {
                     if (panel.isClosed()) {
                         return;
@@ -112,7 +112,7 @@ public class JEIPlugin extends Plugin {
                     progress.refreshSkills();
                 });
             } catch (Exception e) {
-                log.error("Item Finder failed to start", e);
+                log.error("Item Browser failed to start", e);
             }
         });
     }
@@ -212,7 +212,7 @@ public class JEIPlugin extends Plugin {
                 clientToolbar.removeNavigation(navButton);
                 navButton = null;
             }
-            log.info("Item Finder stopped");
+            log.info("Item Browser stopped");
         });
     }
 

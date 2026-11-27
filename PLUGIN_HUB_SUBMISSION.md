@@ -27,7 +27,7 @@ The hub CI runs the packager with `build=standard` and `verifyCore` in `package/
 
 ## Audit
 
-- `runelite-plugin.properties` sets `displayName` (Item Finder), `author`, `description`, `tags`, `plugins`, and `build=standard`. `version` is empty so the hub uses the commit.
+- `runelite-plugin.properties` sets `displayName` (Item Browser), `author`, `description`, `tags`, `plugins`, and `build=standard`. `version` is empty so the hub uses the commit.
 - `plugins=com.osr.jei.JEIPlugin`. There is no `META-INF/services` plugin file.
 - `LICENSE` is BSD 2-Clause, copyright Vivialdi.
 - `icon.png` at the repository root is 48x48, inside the 48x72 and 256 KiB limits.
