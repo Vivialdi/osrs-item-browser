@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Re-render: rsvg-convert -w 48 -h 48 docs/icon/magnifier.svg -o icon.png && rsvg-convert -w 16 -h 16 docs/icon/magnifier.svg -o src/main/resources/com/osr/jei/icon.png -->
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
+  <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="5.5" cy="5.5" r="4.5" stroke="#281E08" stroke-width="2.6"/>
+    <circle cx="5.5" cy="5.5" r="4.5" stroke="#E6C85A" stroke-width="1.5"/>
+    <line x1="9" y1="9" x2="14" y2="14" stroke="#321E0A" stroke-width="2.8"/>
+    <line x1="9" y1="9" x2="14" y2="14" stroke="#785023" stroke-width="1.6"/>
+  </g>
+</svg>
