@@ -12,7 +12,7 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 /**
- * Headless stand-in for Mathew's pane: an open item, a long Dropped-by list,
+ * Headless timing for the detail pane: an open item, a long Dropped-by list,
  * and one monster's locations arriving after the wiki call. The wiki time is
  * not included. This measures the EDT work.
  */
