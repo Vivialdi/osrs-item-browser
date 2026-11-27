@@ -1,36 +1,33 @@
 # Plugin Hub submission
 
-Submit this plugin to [runelite/plugin-hub](https://github.com/runelite/plugin-hub) after pull request #8 is merged to `master`. Fork the hub repository in your own account and open the hub pull request from that fork.
-
-The hub descriptor below is ready to copy. `commit` is `b438ba5d847f3bab963aed7182d8f5aa9cfc82d3`, the commit on `master` from the pull request #8 merge. The hub pull request must use that hash.
+The listing lives on a fork of [runelite/plugin-hub](https://github.com/runelite/plugin-hub). Updates use branch `osrs-item-browser` on that fork.
 
 ## `plugins/osrs-item-browser`
 
-Create a file named `plugins/osrs-item-browser` (no extension) containing exactly these two lines:
+The file `plugins/osrs-item-browser` (no extension) contains these two lines:
 
 ```
 repository=https://github.com/Vivialdi/osrs-item-browser.git
 commit=b438ba5d847f3bab963aed7182d8f5aa9cfc82d3
 ```
 
-`commit` is the full 40-character hash of the commit that landed on `master` when pull request #8 was merged. If GitHub squash-merges, that squash commit is the one to use. If GitHub creates a merge commit, use that merge commit. Copy it from the `master` history after the merge. Do not use a commit that exists only on the pull request branch.
+`commit` is the full 40-character hash of the `master` commit to publish.
 
 ## Steps
 
-1. Merge pull request #8 (`cursor/compact-detail-pane-7325`) into `master`. Do not merge it from this file, and do not open a hub pull request first.
-2. On GitHub, open the `master` commit that the merge produced and copy its full 40-character hash.
-3. Fork `https://github.com/runelite/plugin-hub` into your own account. Create a branch from that fork's `master`.
-4. Add `plugins/osrs-item-browser` with the two lines above. Change nothing else in the hub repository.
-5. Commit, push the branch to your fork, and open a pull request against `runelite/plugin-hub` `master`. Describe the plugin in the pull request body.
-6. Read the hub CI log (`build`, and Plugin Hub Checks if it asks for changes). If it fails, fix the plugin in this repository, merge that fix to `master`, and update `commit=` on the hub pull request to the new `master` hash.
+1. On the fork, check out branch `osrs-item-browser`.
+2. Set `commit=` in `plugins/osrs-item-browser` to the full hash of the `master` commit to publish. Change nothing else in the hub repository.
+3. Commit and push branch `osrs-item-browser`.
+4. Open a pull request against `runelite/plugin-hub` `master`. Describe the plugin in the pull request body.
+5. Read the hub CI log (`build`, and Plugin Hub Checks if it asks for changes).
 
 ## Packager
 
-The hub CI runs the packager with `build=standard` and `verifyCore` in `package/verification-template`. The signing upload (`upload.jar` with `SIGNING_KEY`) needs the hub's secrets. If `master` moves after a local packager run, run the packager again on the new commit before updating `commit=`.
+The hub CI runs the packager with `build=standard` and `verifyCore` in `package/verification-template`. The signing upload (`upload.jar` with `SIGNING_KEY`) needs the hub's secrets. Run the packager on the `master` commit named in `commit=`.
 
 ## Audit
 
-- `runelite-plugin.properties` sets `displayName` (OSRS Item Browser), `author`, `description`, `tags`, `plugins`, and `build=standard`. `version` is empty so the hub uses the commit.
+- `runelite-plugin.properties` sets `displayName` (Item Browser), `author`, `description`, `tags`, `plugins`, and `build=standard`. `version` is empty so the hub uses the commit.
 - `plugins=com.osr.jei.JEIPlugin`. There is no `META-INF/services` plugin file.
 - `LICENSE` is BSD 2-Clause, copyright Vivialdi.
 - `icon.png` at the repository root is 48x48, inside the 48x72 and 256 KiB limits.
