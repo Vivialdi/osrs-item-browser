@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!-- Re-render: rsvg-convert -w 48 -h 48 docs/icon/magnifier.svg -o icon.png && rsvg-convert -w 16 -h 16 docs/icon/magnifier.svg -o src/main/resources/com/osr/jei/icon.png -->
-<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="-1.45 -1.45 18 18">
   <g fill="none" stroke-linecap="round" stroke-linejoin="round">
     <circle cx="5.5" cy="5.5" r="4.5" stroke="#281E08" stroke-width="2.6"/>
     <circle cx="5.5" cy="5.5" r="4.5" stroke="#E6C85A" stroke-width="1.5"/>
